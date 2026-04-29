@@ -10,6 +10,7 @@ pub const APP_SETTING_SERVICE_ADDR_KEY: &str = "app.service_addr";
 pub const APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY: &str = "gateway.route_strategy";
 pub const APP_SETTING_GATEWAY_ROUTE_ACCOUNT_IDS_KEY: &str = "gateway.route_account_ids";
 pub const APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY: &str = "gateway.free_account_max_model";
+pub const APP_SETTING_GATEWAY_MODEL_FORWARD_RULES_KEY: &str = "gateway.model_forward_rules";
 pub const APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY: &str =
     "gateway.quota_protection_enabled";
 pub const APP_SETTING_GATEWAY_QUOTA_PROTECTION_THRESHOLD_PERCENT_KEY: &str =
@@ -29,6 +30,7 @@ pub const APP_SETTING_GATEWAY_RESPONSE_CACHE_TTL_SECS_KEY: &str = "gateway.respo
 pub const APP_SETTING_GATEWAY_RESPONSE_CACHE_MAX_ENTRIES_KEY: &str =
     "gateway.response_cache_max_entries";
 pub const APP_SETTING_GATEWAY_ORIGINATOR_KEY: &str = "gateway.originator";
+pub const APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY: &str = "gateway.user_agent_version";
 pub const APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY: &str = "gateway.residency_requirement";
 pub const APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY: &str =
     "gateway.cpa_no_cookie_header_mode";

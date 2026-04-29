@@ -240,10 +240,9 @@ use route_quality::record_route_quality;
 pub(crate) use route_quality::route_health_score;
 pub(crate) use runtime_config::front_proxy_max_body_bytes;
 use runtime_config::{
-    account_max_inflight_limit, fresh_upstream_client, fresh_upstream_client_for_account,
-    request_gate_wait_timeout, trace_body_preview_max_bytes, upstream_client,
-    upstream_client_for_account, upstream_cookie, upstream_stream_timeout, upstream_total_timeout,
-    DEFAULT_GATEWAY_DEBUG,
+    account_max_inflight_limit, fresh_upstream_client_for_account, request_gate_wait_timeout,
+    trace_body_preview_max_bytes, upstream_client, upstream_client_for_account, upstream_cookie,
+    upstream_stream_timeout, upstream_total_timeout, DEFAULT_GATEWAY_DEBUG,
 };
 use selection::collect_gateway_candidates;
 pub(crate) use selection::invalidate_candidate_cache;
@@ -268,6 +267,10 @@ pub(crate) fn reload_runtime_config_from_env() {
     response_cache::reload_from_env();
 }
 
+pub(crate) fn fresh_upstream_client() -> reqwest::blocking::Client {
+    runtime_config::fresh_upstream_client()
+}
+
 pub(crate) fn current_route_strategy() -> &'static str {
     route_hint::current_route_strategy()
 }
@@ -280,6 +283,14 @@ pub(crate) fn set_route_strategy(strategy: &str) -> Result<&'static str, String>
 
 pub(crate) fn current_free_account_max_model() -> String {
     runtime_config::current_free_account_max_model()
+}
+
+pub(crate) fn current_model_forward_rules() -> String {
+    runtime_config::current_model_forward_rules()
+}
+
+pub(crate) fn resolve_forwarded_model(model: &str) -> Option<String> {
+    runtime_config::resolve_forwarded_model(model)
 }
 
 pub(crate) fn request_compression_enabled() -> bool {
@@ -313,8 +324,24 @@ pub(crate) fn current_originator() -> String {
     runtime_config::current_originator()
 }
 
+pub(crate) fn default_originator() -> &'static str {
+    runtime_config::default_originator()
+}
+
 pub(crate) fn set_originator(originator: &str) -> Result<String, String> {
     runtime_config::set_originator(originator)
+}
+
+pub(crate) fn current_codex_user_agent_version() -> String {
+    runtime_config::current_codex_user_agent_version()
+}
+
+pub(crate) fn default_codex_user_agent_version() -> &'static str {
+    runtime_config::default_codex_user_agent_version()
+}
+
+pub(crate) fn set_codex_user_agent_version(version: &str) -> Result<String, String> {
+    runtime_config::set_codex_user_agent_version(version)
 }
 
 pub(crate) fn current_residency_requirement() -> Option<String> {
@@ -331,6 +358,10 @@ pub(crate) fn current_codex_user_agent() -> String {
 
 pub(crate) fn set_free_account_max_model(model: &str) -> Result<String, String> {
     runtime_config::set_free_account_max_model(model)
+}
+
+pub(crate) fn set_model_forward_rules(raw: &str) -> Result<String, String> {
+    runtime_config::set_model_forward_rules(raw)
 }
 
 pub(crate) fn set_request_compression_enabled(enabled: bool) -> bool {

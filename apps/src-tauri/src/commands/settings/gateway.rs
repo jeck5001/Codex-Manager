@@ -168,6 +168,15 @@ pub async fn service_gateway_upstream_proxy_get(
 }
 
 #[tauri::command]
+pub async fn service_gateway_codex_latest_version_get() -> Result<serde_json::Value, String> {
+    let result = tauri::async_runtime::spawn_blocking(codexmanager_service::fetch_codex_latest_version)
+        .await
+        .map_err(|err| format!("service_gateway_codex_latest_version_get task failed: {err}"))??;
+    serde_json::to_value(result)
+        .map_err(|err| format!("service_gateway_codex_latest_version_get serialize failed: {err}"))
+}
+
+#[tauri::command]
 pub async fn service_gateway_upstream_proxy_set(
     addr: Option<String>,
     proxy_url: Option<String>,

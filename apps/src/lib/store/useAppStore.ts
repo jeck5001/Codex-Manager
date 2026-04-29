@@ -39,6 +39,7 @@ export const useAppStore = create<AppState>((set) => ({
     routeStrategy: "ordered",
     routeStrategyOptions: ["ordered", "balanced", "weighted", "least-latency", "cost-first"],
     freeAccountMaxModel: "auto",
+    modelForwardRules: "",
     freeAccountMaxModelOptions: [
       "auto",
       "gpt-5",
@@ -66,6 +67,9 @@ export const useAppStore = create<AppState>((set) => ({
     responseCacheTtlSecs: 3600,
     responseCacheMaxEntries: 256,
     gatewayOriginator: "codex_cli_rs",
+    gatewayOriginatorDefault: "codex_cli_rs",
+    gatewayUserAgentVersion: "0.101.0",
+    gatewayUserAgentVersionDefault: "0.101.0",
     gatewayResidencyRequirement: "",
     gatewayResidencyRequirementOptions: ["", "us"],
     cpaNoCookieHeaderModeEnabled: false,

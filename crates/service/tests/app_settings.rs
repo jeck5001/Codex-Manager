@@ -201,7 +201,9 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
             "requestCompressionEnabled": false,
             "payloadRewriteRulesJson": "[{\"path\":\"/v1/responses\",\"field\":\"service_tier\",\"mode\":\"set_if_missing\",\"value\":\"flex\"}]",
             "modelAliasPoolsJson": "[{\"alias\":\"o3-auto\",\"strategy\":\"ordered\",\"targets\":[{\"model\":\"o3\"}]}]",
+            "modelForwardRules": "claude-sonnet-4*=gpt-5.4",
             "gatewayOriginator": "codex_cli_rs_test",
+            "gatewayUserAgentVersion": "0.101.1",
             "gatewayResidencyRequirement": "us",
             "cpaNoCookieHeaderModeEnabled": true,
             "upstreamProxyUrl": "http://127.0.0.1:7890",
@@ -360,6 +362,30 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         );
         assert_eq!(
             snapshot
+                .get("gatewayOriginatorDefault")
+                .and_then(|value| value.as_str()),
+            Some("codex_cli_rs")
+        );
+        assert_eq!(
+            snapshot
+                .get("modelForwardRules")
+                .and_then(|value| value.as_str()),
+            Some("claude-sonnet-4*=gpt-5.4")
+        );
+        assert_eq!(
+            snapshot
+                .get("gatewayUserAgentVersion")
+                .and_then(|value| value.as_str()),
+            Some("0.101.1")
+        );
+        assert_eq!(
+            snapshot
+                .get("gatewayUserAgentVersionDefault")
+                .and_then(|value| value.as_str()),
+            Some("0.101.0")
+        );
+        assert_eq!(
+            snapshot
                 .get("gatewayResidencyRequirement")
                 .and_then(|value| value.as_str()),
             Some("us")
@@ -480,9 +506,25 @@ fn app_settings_set_persists_snapshot_and_password_hash() {
         );
         assert_eq!(
             storage
+                .get_app_setting(
+                    codexmanager_service::APP_SETTING_GATEWAY_MODEL_FORWARD_RULES_KEY
+                )
+                .expect("read model forward rules"),
+            Some("claude-sonnet-4*=gpt-5.4".to_string())
+        );
+        assert_eq!(
+            storage
                 .get_app_setting(codexmanager_service::APP_SETTING_GATEWAY_ORIGINATOR_KEY)
                 .expect("read gateway originator"),
             Some("codex_cli_rs_test".to_string())
+        );
+        assert_eq!(
+            storage
+                .get_app_setting(
+                    codexmanager_service::APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY
+                )
+                .expect("read gateway user agent version"),
+            Some("0.101.1".to_string())
         );
         assert_eq!(
             storage
@@ -1440,6 +1482,7 @@ fn app_settings_get_drops_reserved_env_overrides_from_persisted_snapshot() {
         assert!(!stored.contains_key("CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS"));
     });
 }
+
 
 #[test]
 fn app_settings_set_env_overrides_patch_preserves_other_values_and_reset_to_default() {

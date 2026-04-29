@@ -29,9 +29,11 @@ static ENABLE_REQUEST_COMPRESSION: AtomicBool = AtomicBool::new(DEFAULT_ENABLE_R
 static UPSTREAM_COOKIE: OnceLock<RwLock<Option<String>>> = OnceLock::new();
 static UPSTREAM_PROXY_URL: OnceLock<RwLock<Option<String>>> = OnceLock::new();
 static FREE_ACCOUNT_MAX_MODEL: OnceLock<RwLock<String>> = OnceLock::new();
+static MODEL_FORWARD_RULES: OnceLock<RwLock<Vec<ModelForwardRule>>> = OnceLock::new();
 static PAYLOAD_REWRITE_RULES: OnceLock<RwLock<Vec<PayloadRewriteRule>>> = OnceLock::new();
 static MODEL_ALIAS_POOLS: OnceLock<RwLock<Vec<ModelAliasPool>>> = OnceLock::new();
 static ORIGINATOR: OnceLock<RwLock<String>> = OnceLock::new();
+static CODEX_USER_AGENT_VERSION: OnceLock<RwLock<String>> = OnceLock::new();
 static RESIDENCY_REQUIREMENT: OnceLock<RwLock<Option<String>>> = OnceLock::new();
 static TOKEN_EXCHANGE_CLIENT_ID: OnceLock<RwLock<String>> = OnceLock::new();
 static TOKEN_EXCHANGE_ISSUER: OnceLock<RwLock<String>> = OnceLock::new();
@@ -49,6 +51,8 @@ const DEFAULT_REQUEST_GATE_WAIT_TIMEOUT_MS: u64 = 300;
 const DEFAULT_TRACE_BODY_PREVIEW_MAX_BYTES: usize = 0;
 const DEFAULT_FRONT_PROXY_MAX_BODY_BYTES: usize = 16 * 1024 * 1024;
 const DEFAULT_FREE_ACCOUNT_MAX_MODEL: &str = "auto";
+const DEFAULT_MODEL_FORWARD_RULES: &str = "";
+const DEFAULT_CODEX_USER_AGENT_VERSION: &str = "0.101.0";
 const MAX_UPSTREAM_PROXY_POOL_SIZE: usize = 5;
 
 const ENV_REQUEST_GATE_WAIT_TIMEOUT_MS: &str = "CODEXMANAGER_REQUEST_GATE_WAIT_TIMEOUT_MS";
@@ -66,11 +70,19 @@ const ENV_TOKEN_EXCHANGE_ISSUER: &str = "CODEXMANAGER_ISSUER";
 const ENV_PROXY_LIST: &str = "CODEXMANAGER_PROXY_LIST";
 const ENV_UPSTREAM_PROXY_URL: &str = "CODEXMANAGER_UPSTREAM_PROXY_URL";
 const ENV_FREE_ACCOUNT_MAX_MODEL: &str = "CODEXMANAGER_FREE_ACCOUNT_MAX_MODEL";
+const ENV_MODEL_FORWARD_RULES: &str = "CODEXMANAGER_MODEL_FORWARD_RULES";
 const ENV_ORIGINATOR: &str = "CODEXMANAGER_ORIGINATOR";
+const ENV_CODEX_USER_AGENT_VERSION: &str = "CODEXMANAGER_CODEX_USER_AGENT_VERSION";
 const ENV_PAYLOAD_REWRITE_RULES: &str = "CODEXMANAGER_PAYLOAD_REWRITE_RULES";
 const ENV_MODEL_ALIAS_POOLS: &str = "CODEXMANAGER_MODEL_ALIAS_POOLS";
 const ENV_RESIDENCY_REQUIREMENT: &str = "CODEXMANAGER_RESIDENCY_REQUIREMENT";
 pub(crate) const RESIDENCY_HEADER_NAME: &str = "x-openai-internal-codex-residency";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ModelForwardRule {
+    pub from_pattern: String,
+    pub to_model: String,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -356,9 +368,31 @@ pub(crate) fn current_free_account_max_model() -> String {
     crate::lock_utils::read_recover(free_account_max_model_cell(), "free_account_max_model").clone()
 }
 
+pub(crate) fn current_model_forward_rules() -> String {
+    ensure_runtime_config_loaded();
+    serialize_model_forward_rules(&crate::lock_utils::read_recover(
+        model_forward_rules_cell(),
+        "model_forward_rules",
+    ))
+}
+
+pub(crate) fn resolve_forwarded_model(model: &str) -> Option<String> {
+    ensure_runtime_config_loaded();
+    let normalized_model = normalize_model_forward_lookup_model(model)?;
+    let rules = crate::lock_utils::read_recover(model_forward_rules_cell(), "model_forward_rules");
+    rules
+        .iter()
+        .find(|rule| wildcard_pattern_matches(rule.from_pattern.as_str(), normalized_model.as_str()))
+        .map(|rule| rule.to_model.clone())
+}
+
 pub(crate) fn current_originator() -> String {
     ensure_runtime_config_loaded();
     crate::lock_utils::read_recover(originator_cell(), "originator").clone()
+}
+
+pub(crate) fn default_originator() -> &'static str {
+    DEFAULT_ORIGINATOR
 }
 
 pub(crate) fn set_originator(originator: &str) -> Result<String, String> {
@@ -370,13 +404,36 @@ pub(crate) fn set_originator(originator: &str) -> Result<String, String> {
     Ok(normalized)
 }
 
+pub(crate) fn current_codex_user_agent_version() -> String {
+    ensure_runtime_config_loaded();
+    crate::lock_utils::read_recover(codex_user_agent_version_cell(), "codex_user_agent_version")
+        .clone()
+}
+
+pub(crate) fn default_codex_user_agent_version() -> &'static str {
+    DEFAULT_CODEX_USER_AGENT_VERSION
+}
+
+pub(crate) fn set_codex_user_agent_version(version: &str) -> Result<String, String> {
+    ensure_runtime_config_loaded();
+    let normalized = normalize_codex_user_agent_version(version)?;
+    std::env::set_var(ENV_CODEX_USER_AGENT_VERSION, normalized.as_str());
+    let mut cached = crate::lock_utils::write_recover(
+        codex_user_agent_version_cell(),
+        "codex_user_agent_version",
+    );
+    *cached = normalized.clone();
+    Ok(normalized)
+}
+
 pub(crate) fn current_codex_user_agent() -> String {
     ensure_runtime_config_loaded();
     let originator = current_originator();
+    let version = current_codex_user_agent_version();
     format!(
         "{}/{} ({}; {}) CodexManagerGateway",
         originator,
-        "0.101.0",
+        version,
         std::env::consts::OS,
         std::env::consts::ARCH
     )
@@ -408,6 +465,21 @@ pub(crate) fn set_free_account_max_model(model: &str) -> Result<String, String> 
     let mut cached =
         crate::lock_utils::write_recover(free_account_max_model_cell(), "free_account_max_model");
     *cached = normalized.clone();
+    Ok(normalized)
+}
+
+pub(crate) fn set_model_forward_rules(raw: &str) -> Result<String, String> {
+    ensure_runtime_config_loaded();
+    let normalized = normalize_model_forward_rules(raw)?;
+    let parsed = parse_model_forward_rules(normalized.as_str())?;
+    if normalized.is_empty() {
+        std::env::remove_var(ENV_MODEL_FORWARD_RULES);
+    } else {
+        std::env::set_var(ENV_MODEL_FORWARD_RULES, normalized.as_str());
+    }
+    let mut cached =
+        crate::lock_utils::write_recover(model_forward_rules_cell(), "model_forward_rules");
+    *cached = parsed;
     Ok(normalized)
 }
 
@@ -600,6 +672,23 @@ pub(super) fn reload_from_env() {
     *cached_free_account_max_model = free_account_max_model;
     drop(cached_free_account_max_model);
 
+    let model_forward_rules = env_non_empty(ENV_MODEL_FORWARD_RULES)
+        .map(|value| parse_model_forward_rules(value.as_str()))
+        .transpose()
+        .unwrap_or_else(|err| {
+            log::warn!(
+                "event=gateway_invalid_model_forward_rules source=env var={} err={}",
+                ENV_MODEL_FORWARD_RULES,
+                err
+            );
+            None
+        })
+        .unwrap_or_default();
+    let mut cached_model_forward_rules =
+        crate::lock_utils::write_recover(model_forward_rules_cell(), "model_forward_rules");
+    *cached_model_forward_rules = model_forward_rules;
+    drop(cached_model_forward_rules);
+
     let payload_rewrite_rules = env_non_empty(ENV_PAYLOAD_REWRITE_RULES)
         .as_deref()
         .map_or_else(Vec::new, |raw| {
@@ -647,6 +736,16 @@ pub(super) fn reload_from_env() {
     let mut cached_originator = crate::lock_utils::write_recover(originator_cell(), "originator");
     *cached_originator = originator;
     drop(cached_originator);
+
+    let user_agent_version = env_non_empty(ENV_CODEX_USER_AGENT_VERSION)
+        .and_then(|value| normalize_codex_user_agent_version(value.as_str()).ok())
+        .unwrap_or_else(|| DEFAULT_CODEX_USER_AGENT_VERSION.to_string());
+    let mut cached_user_agent_version = crate::lock_utils::write_recover(
+        codex_user_agent_version_cell(),
+        "codex_user_agent_version",
+    );
+    *cached_user_agent_version = user_agent_version;
+    drop(cached_user_agent_version);
 
     let residency_requirement = env_non_empty(ENV_RESIDENCY_REQUIREMENT)
         .and_then(|value| normalize_residency_requirement(Some(value.as_str())).ok())
@@ -740,6 +839,13 @@ fn free_account_max_model_cell() -> &'static RwLock<String> {
     FREE_ACCOUNT_MAX_MODEL.get_or_init(|| RwLock::new(DEFAULT_FREE_ACCOUNT_MAX_MODEL.to_string()))
 }
 
+fn model_forward_rules_cell() -> &'static RwLock<Vec<ModelForwardRule>> {
+    MODEL_FORWARD_RULES.get_or_init(|| {
+        let initial = parse_model_forward_rules(DEFAULT_MODEL_FORWARD_RULES).unwrap_or_default();
+        RwLock::new(initial)
+    })
+}
+
 fn payload_rewrite_rules_cell() -> &'static RwLock<Vec<PayloadRewriteRule>> {
     PAYLOAD_REWRITE_RULES.get_or_init(|| RwLock::new(Vec::new()))
 }
@@ -750,6 +856,11 @@ fn model_alias_pools_cell() -> &'static RwLock<Vec<ModelAliasPool>> {
 
 fn originator_cell() -> &'static RwLock<String> {
     ORIGINATOR.get_or_init(|| RwLock::new(DEFAULT_ORIGINATOR.to_string()))
+}
+
+fn codex_user_agent_version_cell() -> &'static RwLock<String> {
+    CODEX_USER_AGENT_VERSION
+        .get_or_init(|| RwLock::new(DEFAULT_CODEX_USER_AGENT_VERSION.to_string()))
 }
 
 fn residency_requirement_cell() -> &'static RwLock<Option<String>> {
@@ -980,6 +1091,131 @@ fn normalize_model_slug(raw: &str) -> Result<String, String> {
     Ok(normalized)
 }
 
+fn parse_model_forward_rule_line(line: &str) -> Option<(&str, &str)> {
+    line.split_once("=>").or_else(|| line.split_once('='))
+}
+
+fn normalize_model_forward_rules(raw: &str) -> Result<String, String> {
+    let mut lines = Vec::new();
+    for (idx, line) in raw.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let Some((pattern, target)) = parse_model_forward_rule_line(trimmed) else {
+            return Err(format!(
+                "modelForwardRules line {} must use pattern=target",
+                idx + 1
+            ));
+        };
+        let normalized_pattern = normalize_model_forward_pattern(pattern)?;
+        let normalized_target = normalize_forward_target_model(target)?;
+        lines.push(format!("{normalized_pattern}={normalized_target}"));
+    }
+    Ok(lines.join("\n"))
+}
+
+fn parse_model_forward_rules(raw: &str) -> Result<Vec<ModelForwardRule>, String> {
+    let normalized = normalize_model_forward_rules(raw)?;
+    let mut rules = Vec::new();
+    for line in normalized.lines() {
+        let Some((from_pattern, to_model)) = line.split_once('=') else {
+            continue;
+        };
+        rules.push(ModelForwardRule {
+            from_pattern: from_pattern.to_string(),
+            to_model: to_model.to_string(),
+        });
+    }
+    Ok(rules)
+}
+
+fn serialize_model_forward_rules(rules: &[ModelForwardRule]) -> String {
+    rules
+        .iter()
+        .map(|rule| format!("{}={}", rule.from_pattern, rule.to_model))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn wildcard_pattern_matches(pattern: &str, value: &str) -> bool {
+    if !pattern.contains('*') {
+        return pattern.eq_ignore_ascii_case(value);
+    }
+    let normalized_pattern = pattern.to_ascii_lowercase();
+    let normalized_value = value.to_ascii_lowercase();
+    let starts_with_wildcard = normalized_pattern.starts_with('*');
+    let ends_with_wildcard = normalized_pattern.ends_with('*');
+    let segments = normalized_pattern
+        .split('*')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    if segments.is_empty() {
+        return false;
+    }
+
+    let mut cursor = 0usize;
+    for (idx, segment) in segments.iter().enumerate() {
+        let Some(found) = normalized_value[cursor..].find(*segment) else {
+            return false;
+        };
+        let absolute = cursor + found;
+        if idx == 0 && !starts_with_wildcard && absolute != 0 {
+            return false;
+        }
+        cursor = absolute + segment.len();
+    }
+
+    if !ends_with_wildcard {
+        return cursor == normalized_value.len();
+    }
+    true
+}
+
+fn normalize_model_forward_lookup_model(raw: &str) -> Option<String> {
+    let normalized = raw.trim();
+    if normalized.is_empty() {
+        return None;
+    }
+    if normalized
+        .chars()
+        .any(|ch| !(ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '/' | ':')))
+    {
+        return None;
+    }
+    Some(normalized.to_string())
+}
+
+fn normalize_model_forward_pattern(raw: &str) -> Result<String, String> {
+    let normalized = raw.trim();
+    if normalized.is_empty() {
+        return Err("modelForwardRules pattern is required".to_string());
+    }
+    if normalized.chars().any(|ch| {
+        !(ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '/' | ':' | '*'))
+    }) {
+        return Err("modelForwardRules pattern contains unsupported characters".to_string());
+    }
+    Ok(normalized.to_string())
+}
+
+fn normalize_forward_target_model(raw: &str) -> Result<String, String> {
+    let normalized = raw.trim();
+    if normalized.is_empty() {
+        return Err("modelForwardRules target is required".to_string());
+    }
+    if normalized == "auto" {
+        return Err("modelForwardRules target cannot be auto".to_string());
+    }
+    if normalized
+        .chars()
+        .any(|ch| !(ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '/' | ':')))
+    {
+        return Err("modelForwardRules target contains unsupported characters".to_string());
+    }
+    Ok(normalized.to_string())
+}
+
 fn normalize_originator(raw: &str) -> Result<String, String> {
     let normalized = raw.trim();
     if normalized.is_empty() {
@@ -987,6 +1223,23 @@ fn normalize_originator(raw: &str) -> Result<String, String> {
     }
     if normalized.chars().any(|ch| ch.is_ascii_control()) {
         return Err("originator contains control characters".to_string());
+    }
+    Ok(normalized.to_string())
+}
+
+fn normalize_codex_user_agent_version(raw: &str) -> Result<String, String> {
+    let normalized = raw.trim();
+    if normalized.is_empty() {
+        return Err("codexUserAgentVersion is required".to_string());
+    }
+    if normalized.chars().any(|ch| ch.is_ascii_control()) {
+        return Err("codexUserAgentVersion contains control characters".to_string());
+    }
+    if normalized
+        .chars()
+        .any(|ch| !(ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_' | '+')))
+    {
+        return Err("codexUserAgentVersion contains unsupported characters".to_string());
     }
     Ok(normalized.to_string())
 }

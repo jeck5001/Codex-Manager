@@ -1195,6 +1195,7 @@ export interface AppSettings {
   routeStrategyOptions: string[];
   freeAccountMaxModel: string;
   freeAccountMaxModelOptions: string[];
+  modelForwardRules: string;
   newAccountProtectionDays: number;
   quotaProtectionEnabled: boolean;
   quotaProtectionThresholdPercent: number;
@@ -1208,6 +1209,9 @@ export interface AppSettings {
   responseCacheTtlSecs: number;
   responseCacheMaxEntries: number;
   gatewayOriginator: string;
+  gatewayOriginatorDefault: string;
+  gatewayUserAgentVersion: string;
+  gatewayUserAgentVersionDefault: string;
   gatewayResidencyRequirement: string;
   gatewayResidencyRequirementOptions: string[];
   cpaNoCookieHeaderModeEnabled: boolean;
@@ -1271,6 +1275,13 @@ export interface GatewayResponseCacheStats {
   hitCount: number;
   missCount: number;
   hitRatePercent: number;
+}
+
+export interface CodexLatestVersionInfo {
+  packageName: string;
+  version: string;
+  distTag: string;
+  registryUrl: string;
 }
 
 export interface ServiceInitializationResult {

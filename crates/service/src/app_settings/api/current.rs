@@ -12,23 +12,27 @@ use std::collections::BTreeMap;
 use super::{
     current_background_tasks_snapshot_value, current_close_to_tray_on_close_setting,
     current_env_overrides, current_gateway_free_account_max_model,
-    current_gateway_model_alias_pools_json, current_gateway_new_account_protection_days,
-    current_gateway_originator, current_gateway_payload_rewrite_rules_json,
+    current_gateway_model_alias_pools_json, current_gateway_model_forward_rules,
+    current_gateway_new_account_protection_days, current_gateway_originator,
+    current_gateway_payload_rewrite_rules_json,
     current_gateway_quota_protection_enabled, current_gateway_quota_protection_threshold_percent,
     current_gateway_request_compression_enabled, current_gateway_residency_requirement,
     current_gateway_response_cache_enabled, current_gateway_response_cache_max_entries,
     current_gateway_response_cache_ttl_secs, current_gateway_retry_policy,
     current_gateway_sse_keepalive_interval_ms, current_gateway_upstream_stream_timeout_ms,
-    current_lightweight_mode_on_close_to_tray_setting, current_mcp_enabled, current_mcp_port,
+    current_gateway_user_agent_version, current_lightweight_mode_on_close_to_tray_setting,
+    current_mcp_enabled, current_mcp_port,
     current_remote_management_enabled, current_saved_service_addr, current_service_bind_mode,
     current_ui_appearance_preset, current_ui_low_transparency_enabled, current_ui_theme,
-    current_ui_visible_menu_items, current_update_auto_check_enabled, env_override_catalog_value,
-    env_override_reserved_keys, env_override_unsupported_keys, get_persisted_app_setting,
-    parse_bool_with_default, residency_requirement_options, save_env_overrides_value,
+    current_ui_visible_menu_items, current_update_auto_check_enabled, default_gateway_originator,
+    default_gateway_user_agent_version, env_override_catalog_value, env_override_reserved_keys,
+    env_override_unsupported_keys, get_persisted_app_setting, parse_bool_with_default,
+    residency_requirement_options, save_env_overrides_value,
     save_persisted_app_setting, save_persisted_bool_setting, sync_runtime_settings_from_storage,
     APP_SETTING_CLOSE_TO_TRAY_ON_CLOSE_KEY, APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY,
     APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY,
+    APP_SETTING_GATEWAY_MODEL_FORWARD_RULES_KEY,
     APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY, APP_SETTING_GATEWAY_ORIGINATOR_KEY,
     APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
@@ -42,6 +46,7 @@ use super::{
     APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY,
     APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY, APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY,
     APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY, APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
+    APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY,
     APP_SETTING_LIGHTWEIGHT_MODE_ON_CLOSE_TO_TRAY_KEY, APP_SETTING_MCP_ENABLED_KEY,
     APP_SETTING_MCP_PORT_KEY, APP_SETTING_REMOTE_MANAGEMENT_ENABLED_KEY,
     APP_SETTING_SERVICE_ADDR_KEY, APP_SETTING_TEAM_MANAGER_API_KEY_KEY,
@@ -82,6 +87,7 @@ struct PersistCurrentSnapshotInput<'a> {
     remote_management_enabled: bool,
     route_strategy: &'a str,
     free_account_max_model: &'a str,
+    model_forward_rules: &'a str,
     new_account_protection_days: u64,
     quota_protection_enabled: bool,
     quota_protection_threshold_percent: u64,
@@ -95,6 +101,9 @@ struct PersistCurrentSnapshotInput<'a> {
     response_cache_ttl_secs: u64,
     response_cache_max_entries: usize,
     gateway_originator: &'a str,
+    gateway_originator_default: &'a str,
+    gateway_user_agent_version: &'a str,
+    gateway_user_agent_version_default: &'a str,
     gateway_residency_requirement: &'a str,
     cpa_no_cookie_header_mode_enabled: bool,
     upstream_proxy_url: Option<&'a str>,
@@ -126,6 +135,7 @@ pub(super) fn current_app_settings_value(
     let remote_management_enabled = current_remote_management_enabled();
     let route_strategy = crate::gateway::current_route_strategy().to_string();
     let free_account_max_model = current_gateway_free_account_max_model();
+    let model_forward_rules = current_gateway_model_forward_rules();
     let new_account_protection_days = current_gateway_new_account_protection_days();
     let quota_protection_enabled = current_gateway_quota_protection_enabled();
     let quota_protection_threshold_percent = current_gateway_quota_protection_threshold_percent();
@@ -137,6 +147,9 @@ pub(super) fn current_app_settings_value(
     let response_cache_ttl_secs = current_gateway_response_cache_ttl_secs();
     let response_cache_max_entries = current_gateway_response_cache_max_entries();
     let gateway_originator = current_gateway_originator();
+    let gateway_originator_default = default_gateway_originator();
+    let gateway_user_agent_version = current_gateway_user_agent_version();
+    let gateway_user_agent_version_default = default_gateway_user_agent_version();
     let gateway_residency_requirement = current_gateway_residency_requirement().unwrap_or_default();
     let free_account_max_model_options =
         load_free_account_max_model_options(&free_account_max_model);
@@ -186,6 +199,7 @@ pub(super) fn current_app_settings_value(
         remote_management_enabled,
         route_strategy: &route_strategy,
         free_account_max_model: &free_account_max_model,
+        model_forward_rules: &model_forward_rules,
         new_account_protection_days,
         quota_protection_enabled,
         quota_protection_threshold_percent,
@@ -199,6 +213,9 @@ pub(super) fn current_app_settings_value(
         response_cache_ttl_secs,
         response_cache_max_entries,
         gateway_originator: &gateway_originator,
+        gateway_originator_default,
+        gateway_user_agent_version: &gateway_user_agent_version,
+        gateway_user_agent_version_default,
         gateway_residency_requirement: &gateway_residency_requirement,
         cpa_no_cookie_header_mode_enabled,
         upstream_proxy_url: upstream_proxy_url.as_deref(),
@@ -231,6 +248,7 @@ pub(super) fn current_app_settings_value(
         "routeStrategyOptions": ["ordered", "balanced", "weighted", "least-latency", "cost-first"],
         "freeAccountMaxModel": free_account_max_model,
         "freeAccountMaxModelOptions": free_account_max_model_options,
+        "modelForwardRules": model_forward_rules,
         "newAccountProtectionDays": new_account_protection_days,
         "quotaProtectionEnabled": quota_protection_enabled,
         "quotaProtectionThresholdPercent": quota_protection_threshold_percent,
@@ -244,6 +262,9 @@ pub(super) fn current_app_settings_value(
         "responseCacheTtlSecs": response_cache_ttl_secs,
         "responseCacheMaxEntries": response_cache_max_entries,
         "gatewayOriginator": gateway_originator,
+        "gatewayOriginatorDefault": gateway_originator_default,
+        "gatewayUserAgentVersion": gateway_user_agent_version,
+        "gatewayUserAgentVersionDefault": gateway_user_agent_version_default,
         "gatewayResidencyRequirement": gateway_residency_requirement,
         "gatewayResidencyRequirementOptions": residency_requirement_options(),
         "cpaNoCookieHeaderModeEnabled": cpa_no_cookie_header_mode_enabled,
@@ -326,6 +347,7 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
         remote_management_enabled,
         route_strategy,
         free_account_max_model,
+        model_forward_rules,
         new_account_protection_days,
         quota_protection_enabled,
         quota_protection_threshold_percent,
@@ -339,6 +361,9 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
         response_cache_ttl_secs,
         response_cache_max_entries,
         gateway_originator,
+        gateway_originator_default,
+        gateway_user_agent_version,
+        gateway_user_agent_version_default,
         gateway_residency_requirement,
         cpa_no_cookie_header_mode_enabled,
         upstream_proxy_url,
@@ -379,6 +404,14 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
     let _ = save_persisted_app_setting(
         APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY,
         Some(free_account_max_model),
+    );
+    let _ = save_persisted_app_setting(
+        APP_SETTING_GATEWAY_MODEL_FORWARD_RULES_KEY,
+        if model_forward_rules.trim().is_empty() {
+            None
+        } else {
+            Some(model_forward_rules)
+        },
     );
     let _ = save_persisted_app_setting(
         APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY,
@@ -432,6 +465,12 @@ fn persist_current_snapshot(input: PersistCurrentSnapshotInput<'_>) {
     );
     let _ =
         save_persisted_app_setting(APP_SETTING_GATEWAY_ORIGINATOR_KEY, Some(gateway_originator));
+    let _ = gateway_originator_default;
+    let _ = save_persisted_app_setting(
+        APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY,
+        Some(gateway_user_agent_version),
+    );
+    let _ = gateway_user_agent_version_default;
     let _ = save_persisted_app_setting(
         APP_SETTING_GATEWAY_RESIDENCY_REQUIREMENT_KEY,
         if gateway_residency_requirement.trim().is_empty() {

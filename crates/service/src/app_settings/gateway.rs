@@ -1,11 +1,14 @@
 use crate::gateway;
 use crate::usage_refresh;
 use serde::Deserialize;
+use serde::Serialize;
+use std::time::Duration;
 
 use super::{
     normalize_optional_text, save_persisted_app_setting, save_persisted_bool_setting,
     APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY,
+    APP_SETTING_GATEWAY_MODEL_FORWARD_RULES_KEY,
     APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY, APP_SETTING_GATEWAY_ORIGINATOR_KEY,
     APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
@@ -19,7 +22,29 @@ use super::{
     APP_SETTING_GATEWAY_RETRY_POLICY_RETRYABLE_STATUS_CODES_KEY,
     APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY, APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY,
     APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY, APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
+    APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY,
 };
+
+const CODEX_NPM_PACKAGE_NAME: &str = "@openai/codex";
+const CODEX_NPM_LATEST_URL: &str = "https://registry.npmjs.org/@openai%2Fcodex/latest";
+const CODEX_NPM_DIST_TAG: &str = "latest";
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLatestVersionInfo {
+    pub package_name: String,
+    pub version: String,
+    pub dist_tag: String,
+    pub registry_url: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct CodexNpmLatestResponse {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    version: String,
+}
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -107,6 +132,23 @@ pub fn set_gateway_free_account_max_model(model: &str) -> Result<String, String>
 
 pub fn current_gateway_free_account_max_model() -> String {
     gateway::current_free_account_max_model()
+}
+
+pub fn set_gateway_model_forward_rules(raw: &str) -> Result<String, String> {
+    let applied = gateway::set_model_forward_rules(raw)?;
+    save_persisted_app_setting(
+        APP_SETTING_GATEWAY_MODEL_FORWARD_RULES_KEY,
+        if applied.trim().is_empty() {
+            None
+        } else {
+            Some(applied.as_str())
+        },
+    )?;
+    Ok(applied)
+}
+
+pub fn current_gateway_model_forward_rules() -> String {
+    gateway::current_model_forward_rules()
 }
 
 pub fn set_gateway_new_account_protection_days(value: u64) -> Result<u64, String> {
@@ -269,6 +311,63 @@ pub fn set_gateway_originator(originator: &str) -> Result<String, String> {
 
 pub fn current_gateway_originator() -> String {
     gateway::current_originator()
+}
+
+pub fn default_gateway_originator() -> &'static str {
+    gateway::default_originator()
+}
+
+pub fn set_gateway_user_agent_version(version: &str) -> Result<String, String> {
+    let applied = gateway::set_codex_user_agent_version(version)?;
+    save_persisted_app_setting(APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY, Some(&applied))?;
+    Ok(applied)
+}
+
+pub fn current_gateway_user_agent_version() -> String {
+    gateway::current_codex_user_agent_version()
+}
+
+pub fn default_gateway_user_agent_version() -> &'static str {
+    gateway::default_codex_user_agent_version()
+}
+
+pub fn fetch_codex_latest_version() -> Result<CodexLatestVersionInfo, String> {
+    fetch_codex_latest_version_from_url(CODEX_NPM_LATEST_URL)
+}
+
+fn fetch_codex_latest_version_from_url(
+    registry_url: &str,
+) -> Result<CodexLatestVersionInfo, String> {
+    let response = gateway::fresh_upstream_client()
+        .get(registry_url)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .timeout(Duration::from_secs(10))
+        .send()
+        .map_err(|err| format!("请求 Codex latest 版本失败: {err}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!(
+            "获取 Codex latest 版本失败: npm registry 返回 {status}"
+        ));
+    }
+    let payload = response
+        .json::<CodexNpmLatestResponse>()
+        .map_err(|err| format!("解析 Codex latest 版本失败: {err}"))?;
+    let version = payload.version.trim();
+    if version.is_empty() {
+        return Err("解析 Codex latest 版本失败: 返回中缺少 version".to_string());
+    }
+    let package_name = payload.name.trim();
+    Ok(CodexLatestVersionInfo {
+        package_name: if package_name.is_empty() {
+            CODEX_NPM_PACKAGE_NAME.to_string()
+        } else {
+            package_name.to_string()
+        },
+        version: version.to_string(),
+        dist_tag: CODEX_NPM_DIST_TAG.to_string(),
+        registry_url: registry_url.to_string(),
+    })
 }
 
 pub fn set_gateway_residency_requirement(value: Option<&str>) -> Result<Option<String>, String> {

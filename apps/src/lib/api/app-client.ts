@@ -1,5 +1,9 @@
 import { invoke, invokeFirst } from "./transport";
-import { AppSettings, RegisterHotmailLocalHandoff } from "../../types";
+import {
+  AppSettings,
+  CodexLatestVersionInfo,
+  RegisterHotmailLocalHandoff,
+} from "../../types";
 import { normalizeAppSettings } from "./normalize";
 
 export const appClient = {
@@ -11,6 +15,8 @@ export const appClient = {
     const result = await invoke<unknown>("app_settings_set", { patch });
     return normalizeAppSettings(result);
   },
+  getCodexLatestVersion: () =>
+    invoke<CodexLatestVersionInfo>("service_gateway_codex_latest_version_get"),
 
   getCloseToTray: () => invoke<boolean>("app_close_to_tray_on_close_get"),
   setCloseToTray: (enabled: boolean) =>

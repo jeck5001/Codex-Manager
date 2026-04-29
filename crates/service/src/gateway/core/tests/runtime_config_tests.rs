@@ -311,6 +311,44 @@ fn set_originator_updates_env_and_dynamic_user_agent() {
 }
 
 #[test]
+fn set_codex_user_agent_version_updates_env_and_dynamic_user_agent() {
+    let _guard = test_guard();
+    let _originator_guard = EnvGuard::set(ENV_ORIGINATOR, "codex_cli_rs");
+    let _version_guard = EnvGuard::set(ENV_CODEX_USER_AGENT_VERSION, "0.101.0");
+
+    let applied = set_codex_user_agent_version("0.101.1").expect("set codex user agent version");
+
+    assert_eq!(applied, "0.101.1");
+    assert_eq!(current_codex_user_agent_version(), "0.101.1");
+    assert_eq!(
+        std::env::var(ENV_CODEX_USER_AGENT_VERSION).ok().as_deref(),
+        Some("0.101.1")
+    );
+    assert!(current_codex_user_agent().contains("codex_cli_rs/0.101.1"));
+}
+
+#[test]
+fn set_model_forward_rules_updates_env_cache_and_matching() {
+    let _guard = test_guard();
+    let _guard = EnvGuard::clear(ENV_MODEL_FORWARD_RULES);
+
+    let applied = set_model_forward_rules("spark*=gpt-5.4-mini\nclaude-sonnet-4*=gpt-5.4")
+        .expect("set model forward rules");
+
+    assert_eq!(current_model_forward_rules(), applied);
+    assert_eq!(
+        std::env::var(ENV_MODEL_FORWARD_RULES).ok().as_deref(),
+        Some("spark*=gpt-5.4-mini\nclaude-sonnet-4*=gpt-5.4")
+    );
+    assert_eq!(resolve_forwarded_model("spark"), Some("gpt-5.4-mini".to_string()));
+    assert_eq!(
+        resolve_forwarded_model("claude-sonnet-4-20250514"),
+        Some("gpt-5.4".to_string())
+    );
+    assert_eq!(resolve_forwarded_model("gpt-5.4"), None);
+}
+
+#[test]
 fn set_residency_requirement_updates_env_and_cache() {
     let _guard = test_guard();
     let _guard = EnvGuard::clear(ENV_RESIDENCY_REQUIREMENT);

@@ -263,6 +263,25 @@ fn filter_multipart_form_data_body(
     Some((rebuilt, dropped_keys))
 }
 
+fn apply_model_forward_rule_if_needed(obj: &mut serde_json::Map<String, Value>) -> bool {
+    let Some(current_model) = obj
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return false;
+    };
+    let Some(forwarded_model) = super::resolve_forwarded_model(current_model) else {
+        return false;
+    };
+    if forwarded_model.eq_ignore_ascii_case(current_model) {
+        return false;
+    }
+    obj.insert("model".to_string(), Value::String(forwarded_model));
+    true
+}
+
 #[allow(dead_code)]
 pub(super) fn apply_request_overrides(
     path: &str,
@@ -337,6 +356,10 @@ pub(super) fn apply_request_overrides_with_prompt_cache_key(
                     path,
                     rewritten_fields.join(",")
                 );
+            }
+
+            if apply_model_forward_rule_if_needed(obj) {
+                changed = true;
             }
 
             if super::strict_request_param_allowlist_enabled() {

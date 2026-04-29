@@ -8,6 +8,10 @@ import { ConfirmDialog } from "@/components/modals/confirm-dialog";
 import { accountClient } from "@/lib/api/account-client";
 import { appClient } from "@/lib/api/app-client";
 import { serviceClient } from "@/lib/api/service-client";
+import {
+  DEFAULT_CODEX_ORIGINATOR,
+  DEFAULT_CODEX_USER_AGENT_VERSION,
+} from "@/lib/constants/codex";
 import { getAppErrorMessage, isTauriRuntime } from "@/lib/api/transport";
 import { useAppStore } from "@/lib/store/useAppStore";
 import {
@@ -614,6 +618,9 @@ export default function SettingsPage() {
   const [upstreamProxyDraft, setUpstreamProxyDraft] = useState<string | null>(null);
   const [mcpPortDraft, setMcpPortDraft] = useState<string | null>(null);
   const [gatewayOriginatorDraft, setGatewayOriginatorDraft] = useState<string | null>(null);
+  const [gatewayUserAgentVersionDraft, setGatewayUserAgentVersionDraft] =
+    useState<string | null>(null);
+  const [modelForwardRulesDraft, setModelForwardRulesDraft] = useState<string | null>(null);
   const [newAccountProtectionDaysDraft, setNewAccountProtectionDaysDraft] = useState<string | null>(null);
   const [quotaProtectionThresholdDraft, setQuotaProtectionThresholdDraft] = useState<string | null>(null);
   const [retryPolicyMaxRetriesDraft, setRetryPolicyMaxRetriesDraft] = useState<string | null>(null);
@@ -743,6 +750,36 @@ export default function SettingsPage() {
     },
     onError: (error: unknown) => {
       toast.error(`更新失败: ${getAppErrorMessage(error)}`);
+    },
+  });
+
+  const syncCodexLatestVersion = useMutation({
+    mutationFn: () => appClient.getCodexLatestVersion(),
+    onSuccess: (result) => {
+      const latestVersion =
+        typeof result?.version === "string" ? result.version.trim() : "";
+      if (!latestVersion) {
+        toast.error("未获取到有效的 Codex latest 版本号");
+        return;
+      }
+      if (latestVersion === snapshot?.gatewayUserAgentVersion) {
+        setGatewayUserAgentVersionDraft(null);
+        toast.success(`当前版本号已与 Codex latest 一致: ${latestVersion}`);
+        return;
+      }
+      void updateSettings
+        .mutateAsync({
+          gatewayUserAgentVersion: latestVersion,
+          _silent: true,
+        })
+        .then((nextSnapshot) => {
+          setGatewayUserAgentVersionDraft(null);
+          toast.success(`已同步 Codex latest 版本号: ${nextSnapshot.gatewayUserAgentVersion}`);
+        })
+        .catch(() => undefined);
+    },
+    onError: (error: unknown) => {
+      toast.error(`获取 Codex latest 版本失败: ${getAppErrorMessage(error)}`);
     },
   });
 
@@ -1140,8 +1177,17 @@ export default function SettingsPage() {
   );
 
   const upstreamProxyInput = upstreamProxyDraft ?? (snapshot?.upstreamProxyUrl || "");
+  const gatewayOriginatorDefault =
+    snapshot?.gatewayOriginatorDefault || DEFAULT_CODEX_ORIGINATOR;
+  const gatewayUserAgentVersionDefault =
+    snapshot?.gatewayUserAgentVersionDefault || DEFAULT_CODEX_USER_AGENT_VERSION;
   const gatewayOriginatorInput =
-    gatewayOriginatorDraft ?? (snapshot?.gatewayOriginator || "codex_cli_rs");
+    gatewayOriginatorDraft ?? (snapshot?.gatewayOriginator || gatewayOriginatorDefault);
+  const gatewayUserAgentVersionInput =
+    gatewayUserAgentVersionDraft ??
+    (snapshot?.gatewayUserAgentVersion || gatewayUserAgentVersionDefault);
+  const modelForwardRulesInput =
+    modelForwardRulesDraft ?? (snapshot?.modelForwardRules || "");
   const quotaProtectionThresholdInput =
     quotaProtectionThresholdDraft ??
     stringifyNumber(snapshot?.quotaProtectionThresholdPercent);
@@ -2629,6 +2675,34 @@ export default function SettingsPage() {
                 </p>
               </div>
 
+              <div className="grid gap-2">
+                <Label>模型转发规则</Label>
+                <Textarea
+                  className="min-h-[132px] max-w-2xl font-mono text-xs"
+                  placeholder={"spark*=gpt-5.4-mini\nclaude-sonnet-4*=gpt-5.4"}
+                  value={modelForwardRulesInput}
+                  onChange={(event) => setModelForwardRulesDraft(event.target.value)}
+                  onBlur={() => {
+                    if (modelForwardRulesDraft == null) return;
+                    if (
+                      modelForwardRulesInput.trim() ===
+                      (snapshot.modelForwardRules || "").trim()
+                    ) {
+                      setModelForwardRulesDraft(null);
+                      return;
+                    }
+                    void updateSettings
+                      .mutateAsync({ modelForwardRules: modelForwardRulesInput })
+                      .then(() => setModelForwardRulesDraft(null))
+                      .catch(() => undefined);
+                  }}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  一行一条，格式为 <code>源模型=目标模型</code>，支持 <code>*</code> 通配。
+                  平台 Key 没有强绑模型时，会先按这里把请求模型改写，再进入账号路由。
+                </p>
+              </div>
+
               <div className="grid gap-2 md:max-w-[240px]">
                 <Label>新号保护天数</Label>
                 <Input
@@ -2864,7 +2938,10 @@ export default function SettingsPage() {
                   onChange={(event) => setGatewayOriginatorDraft(event.target.value)}
                   onBlur={() => {
                     if (gatewayOriginatorDraft == null) return;
-                    if (gatewayOriginatorInput === (snapshot.gatewayOriginator || "codex_cli_rs")) {
+                    if (
+                      gatewayOriginatorInput ===
+                      (snapshot.gatewayOriginator || gatewayOriginatorDefault)
+                    ) {
                       setGatewayOriginatorDraft(null);
                       return;
                     }
@@ -2875,7 +2952,60 @@ export default function SettingsPage() {
                   }}
                 />
                 <p className="text-[10px] text-muted-foreground">
-                  对齐官方 Codex 的上游 Originator。默认值为 <code>codex_cli_rs</code>，会同步影响登录和网关上游请求头。
+                  对齐官方 Codex 的上游 Originator。默认值为 <code>{gatewayOriginatorDefault}</code>，会同步影响登录和网关上游请求头。
+                </p>
+              </div>
+
+              <div className="grid gap-2">
+                <Label>User-Agent 版本</Label>
+                <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                  <Input
+                    className="h-10 max-w-md font-mono"
+                    value={gatewayUserAgentVersionInput}
+                    onChange={(event) =>
+                      setGatewayUserAgentVersionDraft(event.target.value)
+                    }
+                    onBlur={() => {
+                      if (gatewayUserAgentVersionDraft == null) return;
+                      if (
+                        gatewayUserAgentVersionInput ===
+                        (snapshot.gatewayUserAgentVersion ||
+                          gatewayUserAgentVersionDefault)
+                      ) {
+                        setGatewayUserAgentVersionDraft(null);
+                        return;
+                      }
+                      void updateSettings
+                        .mutateAsync({
+                          gatewayUserAgentVersion: gatewayUserAgentVersionInput,
+                        })
+                        .then(() => setGatewayUserAgentVersionDraft(null))
+                        .catch(() => undefined);
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="h-10 w-fit gap-2"
+                    disabled={
+                      syncCodexLatestVersion.isPending || updateSettings.isPending
+                    }
+                    onClick={() => syncCodexLatestVersion.mutate()}
+                  >
+                    <RefreshCw
+                      className={cn(
+                        "h-4 w-4",
+                        syncCodexLatestVersion.isPending && "animate-spin"
+                      )}
+                    />
+                    同步 Codex Latest
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  控制真实出站 <code>User-Agent</code> 里的版本号，默认值为{" "}
+                  <code>{gatewayUserAgentVersionDefault}</code>。点击右侧按钮可读取
+                  <code> @openai/codex </code>
+                  的 latest 版本并立即同步。
                 </p>
               </div>
 

@@ -6,13 +6,15 @@ use super::{
     save_persisted_app_setting, save_persisted_bool_setting, set_close_to_tray_on_close_setting,
     set_env_overrides, set_gateway_background_tasks, set_gateway_cpa_no_cookie_header_mode,
     set_gateway_free_account_max_model, set_gateway_model_alias_pools_json,
-    set_gateway_new_account_protection_days, set_gateway_originator,
+    set_gateway_model_forward_rules, set_gateway_new_account_protection_days,
+    set_gateway_originator,
     set_gateway_payload_rewrite_rules_json, set_gateway_quota_protection_enabled,
     set_gateway_quota_protection_threshold_percent, set_gateway_request_compression_enabled,
     set_gateway_residency_requirement, set_gateway_response_cache_enabled,
     set_gateway_response_cache_max_entries, set_gateway_response_cache_ttl_secs,
     set_gateway_retry_policy, set_gateway_route_strategy, set_gateway_sse_keepalive_interval_ms,
     set_gateway_upstream_proxy_url, set_gateway_upstream_stream_timeout_ms,
+    set_gateway_user_agent_version,
     set_lightweight_mode_on_close_to_tray_setting, set_mcp_enabled, set_mcp_port,
     set_remote_management_enabled, set_saved_service_addr, set_service_bind_mode,
     set_ui_appearance_preset, set_ui_low_transparency_enabled, set_ui_theme,
@@ -42,6 +44,7 @@ pub(super) struct AppSettingsPatch {
     remote_management_enabled: Option<bool>,
     route_strategy: Option<String>,
     free_account_max_model: Option<String>,
+    model_forward_rules: Option<String>,
     new_account_protection_days: Option<u64>,
     quota_protection_enabled: Option<bool>,
     quota_protection_threshold_percent: Option<u64>,
@@ -60,6 +63,7 @@ pub(super) struct AppSettingsPatch {
     response_cache_ttl_secs: Option<u64>,
     response_cache_max_entries: Option<usize>,
     gateway_originator: Option<String>,
+    gateway_user_agent_version: Option<String>,
     gateway_residency_requirement: Option<String>,
     cpa_no_cookie_header_mode_enabled: Option<bool>,
     upstream_proxy_url: Option<String>,
@@ -135,6 +139,9 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
     if let Some(model) = patch.free_account_max_model {
         let _ = set_gateway_free_account_max_model(&model)?;
     }
+    if let Some(raw) = patch.model_forward_rules {
+        let _ = set_gateway_model_forward_rules(&raw)?;
+    }
     if let Some(value) = patch.new_account_protection_days {
         let _ = set_gateway_new_account_protection_days(value)?;
     }
@@ -182,6 +189,9 @@ pub(super) fn apply_app_settings_patch(patch: AppSettingsPatch) -> Result<(), St
     }
     if let Some(originator) = patch.gateway_originator {
         let _ = set_gateway_originator(&originator)?;
+    }
+    if let Some(version) = patch.gateway_user_agent_version {
+        let _ = set_gateway_user_agent_version(&version)?;
     }
     if let Some(residency_requirement) = patch.gateway_residency_requirement {
         let _ = set_gateway_residency_requirement(Some(&residency_requirement))?;

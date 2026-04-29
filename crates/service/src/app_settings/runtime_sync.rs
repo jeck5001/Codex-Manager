@@ -7,6 +7,7 @@ use super::{
     reload_runtime_after_env_override_apply, set_service_bind_mode, BackgroundTasksInput,
     APP_SETTING_GATEWAY_BACKGROUND_TASKS_KEY, APP_SETTING_GATEWAY_CPA_NO_COOKIE_HEADER_MODE_KEY,
     APP_SETTING_GATEWAY_FREE_ACCOUNT_MAX_MODEL_KEY, APP_SETTING_GATEWAY_MODEL_ALIAS_POOLS_JSON_KEY,
+    APP_SETTING_GATEWAY_MODEL_FORWARD_RULES_KEY,
     APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY, APP_SETTING_GATEWAY_ORIGINATOR_KEY,
     APP_SETTING_GATEWAY_PAYLOAD_REWRITE_RULES_JSON_KEY,
     APP_SETTING_GATEWAY_QUOTA_PROTECTION_ENABLED_KEY,
@@ -21,6 +22,7 @@ use super::{
     APP_SETTING_GATEWAY_ROUTE_ACCOUNT_IDS_KEY, APP_SETTING_GATEWAY_ROUTE_STRATEGY_KEY,
     APP_SETTING_GATEWAY_SSE_KEEPALIVE_INTERVAL_MS_KEY,
     APP_SETTING_GATEWAY_UPSTREAM_PROXY_URL_KEY, APP_SETTING_GATEWAY_UPSTREAM_STREAM_TIMEOUT_MS_KEY,
+    APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY,
     SERVICE_BIND_MODE_SETTING_KEY,
 };
 
@@ -72,6 +74,11 @@ pub fn sync_runtime_settings_from_storage() {
             if let Err(err) = gateway::set_free_account_max_model(&model) {
                 log::warn!("sync persisted free account max model failed: {err}");
             }
+        }
+    }
+    if let Some(raw) = settings.get(APP_SETTING_GATEWAY_MODEL_FORWARD_RULES_KEY) {
+        if let Err(err) = gateway::set_model_forward_rules(raw) {
+            log::warn!("sync persisted model forward rules failed: {err}");
         }
     }
     if let Some(raw) = settings.get(APP_SETTING_GATEWAY_NEW_ACCOUNT_PROTECTION_DAYS_KEY) {
@@ -162,6 +169,13 @@ pub fn sync_runtime_settings_from_storage() {
         if let Some(originator) = normalize_optional_text(Some(originator)) {
             if let Err(err) = gateway::set_originator(&originator) {
                 log::warn!("sync persisted gateway originator failed: {err}");
+            }
+        }
+    }
+    if let Some(version) = settings.get(APP_SETTING_GATEWAY_USER_AGENT_VERSION_KEY) {
+        if let Some(version) = normalize_optional_text(Some(version)) {
+            if let Err(err) = gateway::set_codex_user_agent_version(&version) {
+                log::warn!("sync persisted gateway user agent version failed: {err}");
             }
         }
     }

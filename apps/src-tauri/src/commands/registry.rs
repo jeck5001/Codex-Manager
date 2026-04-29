@@ -78,6 +78,7 @@ macro_rules! invoke_handler {
             crate::commands::settings::gateway::service_gateway_cache_clear,
             crate::commands::settings::gateway::service_gateway_background_tasks_set,
             crate::commands::settings::gateway::service_gateway_upstream_proxy_get,
+            crate::commands::settings::gateway::service_gateway_codex_latest_version_get,
             crate::commands::settings::gateway::service_gateway_upstream_proxy_set,
             crate::commands::settings::gateway::service_gateway_freeproxy_sync,
             crate::commands::settings::gateway::service_gateway_transport_get,

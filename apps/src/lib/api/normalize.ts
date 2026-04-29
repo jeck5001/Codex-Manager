@@ -1,6 +1,11 @@
 "use client";
 
 import {
+  DEFAULT_CODEX_ORIGINATOR,
+  DEFAULT_CODEX_USER_AGENT_VERSION,
+} from "@/lib/constants/codex";
+
+import {
   Account,
   AccountListResult,
   AccountUsage,
@@ -1418,6 +1423,7 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     freeAccountMaxModelOptions: asArray(source.freeAccountMaxModelOptions).map((item) =>
       asString(item)
     ),
+    modelForwardRules: asString(source.modelForwardRules ?? source.model_forward_rules),
     newAccountProtectionDays: asInteger(source.newAccountProtectionDays, 3, 0),
     quotaProtectionEnabled: asBoolean(source.quotaProtectionEnabled, false),
     quotaProtectionThresholdPercent: asInteger(
@@ -1439,7 +1445,14 @@ export function normalizeAppSettings(payload: unknown): AppSettings {
     responseCacheEnabled: asBoolean(source.responseCacheEnabled, false),
     responseCacheTtlSecs: asInteger(source.responseCacheTtlSecs, 3600, 1),
     responseCacheMaxEntries: asInteger(source.responseCacheMaxEntries, 256, 1),
-    gatewayOriginator: asString(source.gatewayOriginator) || "codex_cli_rs",
+    gatewayOriginator: asString(source.gatewayOriginator) || DEFAULT_CODEX_ORIGINATOR,
+    gatewayOriginatorDefault:
+      asString(source.gatewayOriginatorDefault) || DEFAULT_CODEX_ORIGINATOR,
+    gatewayUserAgentVersion:
+      asString(source.gatewayUserAgentVersion) || DEFAULT_CODEX_USER_AGENT_VERSION,
+    gatewayUserAgentVersionDefault:
+      asString(source.gatewayUserAgentVersionDefault) ||
+      DEFAULT_CODEX_USER_AGENT_VERSION,
     gatewayResidencyRequirement: asString(source.gatewayResidencyRequirement),
     gatewayResidencyRequirementOptions: asArray(
       source.gatewayResidencyRequirementOptions
