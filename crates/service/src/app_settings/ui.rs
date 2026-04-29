@@ -23,6 +23,7 @@ const VALID_UI_MENU_ITEMS: &[&str] = &[
     "emailServices",
     "hotmail",
     "apiKeys",
+    "models",
     "logs",
     "audit",
     "costs",
@@ -179,4 +180,19 @@ pub fn set_ui_visible_menu_items(items: &[String]) -> Result<Vec<String>, String
     save_persisted_app_setting(APP_SETTING_UI_VISIBLE_MENU_ITEMS_KEY, Some(&serialized))?;
     std::env::set_var(ENV_UI_VISIBLE_MENU_ITEMS, normalized.join(","));
     Ok(normalized)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_ui_visible_menu_items;
+
+    #[test]
+    fn normalize_ui_visible_menu_items_preserves_models_entry() {
+        let normalized = normalize_ui_visible_menu_items(&[
+            "dashboard".to_string(),
+            "models".to_string(),
+        ]);
+
+        assert!(normalized.iter().any(|item| item == "models"));
+    }
 }
