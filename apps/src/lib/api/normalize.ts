@@ -60,6 +60,11 @@ import {
   ModelTrendItem,
   ModelTrendResult,
   ModelPricingItem,
+  ManagedModelCatalog,
+  ManagedModelInfo,
+  ModelInfo,
+  ModelReasoningLevel,
+  ModelTruncationPolicy,
   ModelOption,
   RequestTrendItem,
   RequestTrendResult,
@@ -141,6 +146,27 @@ function asBoolean(value: unknown, fallback = false): boolean {
     if (["0", "false", "no", "off"].includes(normalized)) return false;
   }
   return fallback;
+}
+
+function asBooleanOrNull(value: unknown): boolean | null {
+  if (value == null) return null;
+  return asBoolean(value, false);
+}
+
+function asNullableString(value: unknown): string | null {
+  const text = asString(value);
+  return text ? text : null;
+}
+
+function asNullableNumber(value: unknown): number | null {
+  return toNullableNumber(value);
+}
+
+function asObjectOrNull(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
 }
 
 function asInteger(value: unknown, fallback: number, min = 0): number {
@@ -804,6 +830,195 @@ export function normalizeModelOptions(payload: unknown): ModelOption[] {
       };
     })
     .filter((item): item is ModelOption => Boolean(item));
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  return asArray(value)
+    .map((item) => asString(item))
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeModelReasoningLevel(payload: unknown): ModelReasoningLevel | null {
+  const source = asObject(payload);
+  const effort = asString(source.effort);
+  const description = asString(source.description);
+  if (!effort) return null;
+  const extra = Object.fromEntries(
+    Object.entries(source).filter(([key]) => key !== "effort" && key !== "description")
+  );
+  return {
+    ...extra,
+    effort,
+    description,
+  };
+}
+
+function normalizeModelTruncationPolicy(payload: unknown): ModelTruncationPolicy | null {
+  const source = asObject(payload);
+  const mode = asString(source.mode);
+  const limit = asInteger(source.limit, 0, 0);
+  if (!mode && !limit) return null;
+  const extra = Object.fromEntries(
+    Object.entries(source).filter(([key]) => key !== "mode" && key !== "limit")
+  );
+  return {
+    ...extra,
+    mode,
+    limit,
+  };
+}
+
+function normalizeModelInfo(payload: unknown): ModelInfo | null {
+  const source = asObject(payload);
+  const slug = asString(source.slug);
+  if (!slug) return null;
+  const displayName = asString(source.displayName ?? source.display_name) || slug;
+  const extra = Object.fromEntries(
+    Object.entries(source).filter(
+      ([key]) =>
+        ![
+          "slug",
+          "displayName",
+          "display_name",
+          "description",
+          "defaultReasoningLevel",
+          "default_reasoning_level",
+          "supportedReasoningLevels",
+          "supported_reasoning_levels",
+          "shellType",
+          "shell_type",
+          "visibility",
+          "supportedInApi",
+          "supported_in_api",
+          "priority",
+          "additionalSpeedTiers",
+          "additional_speed_tiers",
+          "availabilityNux",
+          "availability_nux",
+          "upgrade",
+          "baseInstructions",
+          "base_instructions",
+          "modelMessages",
+          "model_messages",
+          "supportsReasoningSummaries",
+          "supports_reasoning_summaries",
+          "defaultReasoningSummary",
+          "default_reasoning_summary",
+          "supportVerbosity",
+          "support_verbosity",
+          "defaultVerbosity",
+          "default_verbosity",
+          "applyPatchToolType",
+          "apply_patch_tool_type",
+          "webSearchToolType",
+          "web_search_tool_type",
+          "truncationPolicy",
+          "truncation_policy",
+          "supportsParallelToolCalls",
+          "supports_parallel_tool_calls",
+          "supportsImageDetailOriginal",
+          "supports_image_detail_original",
+          "contextWindow",
+          "context_window",
+          "autoCompactTokenLimit",
+          "auto_compact_token_limit",
+          "effectiveContextWindowPercent",
+          "effective_context_window_percent",
+          "experimentalSupportedTools",
+          "experimental_supported_tools",
+          "inputModalities",
+          "input_modalities",
+          "minimalClientVersion",
+          "minimal_client_version",
+          "supportsSearchTool",
+          "supports_search_tool",
+          "availableInPlans",
+          "available_in_plans",
+        ].includes(key)
+    )
+  );
+  const supportedReasoningLevels = asArray(source.supportedReasoningLevels ?? source.supported_reasoning_levels)
+    .map(normalizeModelReasoningLevel)
+    .filter((item): item is ModelReasoningLevel => Boolean(item));
+  return {
+    ...extra,
+    slug,
+    displayName,
+    description: asNullableString(source.description),
+    defaultReasoningLevel: asNullableString(
+      source.defaultReasoningLevel ?? source.default_reasoning_level
+    ),
+    supportedReasoningLevels,
+    shellType: asNullableString(source.shellType ?? source.shell_type),
+    visibility: asNullableString(source.visibility),
+    supportedInApi: asBoolean(source.supportedInApi ?? source.supported_in_api, true),
+    priority: asInteger(source.priority, 0, 0),
+    additionalSpeedTiers: normalizeStringArray(
+      source.additionalSpeedTiers ?? source.additional_speed_tiers
+    ),
+    availabilityNux: asObjectOrNull(source.availabilityNux ?? source.availability_nux),
+    upgrade: asObjectOrNull(source.upgrade),
+    baseInstructions: asNullableString(source.baseInstructions ?? source.base_instructions),
+    modelMessages: asObjectOrNull(source.modelMessages ?? source.model_messages),
+    supportsReasoningSummaries: asBooleanOrNull(
+      source.supportsReasoningSummaries ?? source.supports_reasoning_summaries
+    ),
+    defaultReasoningSummary: asNullableString(
+      source.defaultReasoningSummary ?? source.default_reasoning_summary
+    ),
+    supportVerbosity: asBooleanOrNull(source.supportVerbosity ?? source.support_verbosity),
+    defaultVerbosity: source.defaultVerbosity ?? source.default_verbosity ?? null,
+    applyPatchToolType: asNullableString(
+      source.applyPatchToolType ?? source.apply_patch_tool_type
+    ),
+    webSearchToolType: asNullableString(source.webSearchToolType ?? source.web_search_tool_type),
+    truncationPolicy: normalizeModelTruncationPolicy(
+      source.truncationPolicy ?? source.truncation_policy
+    ),
+    supportsParallelToolCalls: asBooleanOrNull(
+      source.supportsParallelToolCalls ?? source.supports_parallel_tool_calls
+    ),
+    supportsImageDetailOriginal: asBooleanOrNull(
+      source.supportsImageDetailOriginal ?? source.supports_image_detail_original
+    ),
+    contextWindow: asNullableNumber(source.contextWindow ?? source.context_window),
+    autoCompactTokenLimit: asNullableNumber(
+      source.autoCompactTokenLimit ?? source.auto_compact_token_limit
+    ),
+    effectiveContextWindowPercent: asNullableNumber(
+      source.effectiveContextWindowPercent ?? source.effective_context_window_percent
+    ),
+    experimentalSupportedTools: normalizeStringArray(
+      source.experimentalSupportedTools ?? source.experimental_supported_tools
+    ),
+    inputModalities: normalizeStringArray(source.inputModalities ?? source.input_modalities),
+    minimalClientVersion: source.minimalClientVersion ?? source.minimal_client_version ?? null,
+    supportsSearchTool: asBooleanOrNull(source.supportsSearchTool ?? source.supports_search_tool),
+    availableInPlans: normalizeStringArray(source.availableInPlans ?? source.available_in_plans),
+  };
+}
+
+export function normalizeManagedModelCatalog(payload: unknown): ManagedModelCatalog {
+  const source = asObject(payload);
+  const items = asArray(source.items ?? payload)
+    .map((item) => {
+      const model = normalizeModelInfo(item);
+      if (!model) return null;
+      const current = asObject(item);
+      return {
+        ...model,
+        sourceKind: asString(current.sourceKind ?? current.source_kind) || "remote",
+        userEdited: asBoolean(current.userEdited ?? current.user_edited, false),
+        sortIndex: asInteger(current.sortIndex ?? current.sort_index, 0, 0),
+        updatedAt: asNullableNumber(current.updatedAt ?? current.updated_at) ?? 0,
+      } satisfies ManagedModelInfo;
+    })
+    .filter((item): item is ManagedModelInfo => Boolean(item));
+  return {
+    ...source,
+    items,
+  };
 }
 
 export function normalizeApiKey(item: unknown): ApiKey | null {

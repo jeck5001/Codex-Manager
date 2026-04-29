@@ -418,6 +418,71 @@ pub struct ModelOptionsCacheRecord {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ModelCatalogScopeRecord {
+    pub scope: String,
+    pub extra_json: String,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ModelCatalogModelRecord {
+    pub scope: String,
+    pub slug: String,
+    pub display_name: String,
+    pub source_kind: String,
+    pub user_edited: bool,
+    pub description: Option<String>,
+    pub default_reasoning_level: Option<String>,
+    pub shell_type: Option<String>,
+    pub visibility: Option<String>,
+    pub supported_in_api: Option<bool>,
+    pub priority: Option<i64>,
+    pub availability_nux_json: Option<String>,
+    pub upgrade_json: Option<String>,
+    pub base_instructions: Option<String>,
+    pub model_messages_json: Option<String>,
+    pub supports_reasoning_summaries: Option<bool>,
+    pub default_reasoning_summary: Option<String>,
+    pub support_verbosity: Option<bool>,
+    pub default_verbosity_json: Option<String>,
+    pub apply_patch_tool_type: Option<String>,
+    pub web_search_tool_type: Option<String>,
+    pub truncation_mode: Option<String>,
+    pub truncation_limit: Option<i64>,
+    pub truncation_extra_json: Option<String>,
+    pub supports_parallel_tool_calls: Option<bool>,
+    pub supports_image_detail_original: Option<bool>,
+    pub context_window: Option<i64>,
+    pub auto_compact_token_limit: Option<i64>,
+    pub effective_context_window_percent: Option<i64>,
+    pub minimal_client_version_json: Option<String>,
+    pub supports_search_tool: Option<bool>,
+    pub extra_json: String,
+    pub sort_index: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ModelCatalogReasoningLevelRecord {
+    pub scope: String,
+    pub slug: String,
+    pub effort: String,
+    pub description: String,
+    pub extra_json: String,
+    pub sort_index: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ModelCatalogStringItemRecord {
+    pub scope: String,
+    pub slug: String,
+    pub value: String,
+    pub sort_index: i64,
+    pub updated_at: i64,
+}
+
 #[derive(Debug)]
 pub struct Storage {
     conn: Connection,
@@ -655,6 +720,22 @@ impl Storage {
             "046_request_logs_candidate_stats",
             include_str!("../../migrations/046_request_logs_candidate_stats.sql"),
             |s| s.ensure_request_log_candidate_stats_columns(),
+        )?;
+        self.apply_sql_migration(
+            "047_model_catalog_models",
+            include_str!("../../migrations/047_model_catalog_models.sql"),
+        )?;
+        self.apply_sql_migration(
+            "048_drop_model_options_cache",
+            include_str!("../../migrations/048_drop_model_options_cache.sql"),
+        )?;
+        self.apply_sql_migration(
+            "049_model_catalog_string_items",
+            include_str!("../../migrations/049_model_catalog_string_items.sql"),
+        )?;
+        self.apply_sql_migration(
+            "050_api_key_profiles_drop_azure_protocol",
+            include_str!("../../migrations/050_api_key_profiles_drop_azure_protocol.sql"),
         )?;
         self.ensure_alerting_tables()?;
         self.ensure_audit_logs_table()?;

@@ -565,6 +565,147 @@ fn gateway_retry_policy_rpc_supports_get_set_and_snapshot() {
 }
 
 #[test]
+fn apikey_model_catalog_rpc_supports_save_list_delete_and_legacy_options() {
+    let (_db_scope, _storage) = setup_test_db("apikey-model-catalog-rpc");
+
+    let initial_list = handle_request(JsonRpcRequest {
+        id: 600,
+        method: "apikey/modelCatalogList".to_string(),
+        params: None,
+    });
+    assert_eq!(
+        initial_list
+            .result
+            .get("items")
+            .and_then(|value| value.as_array())
+            .map(|items| items.len()),
+        Some(0)
+    );
+
+    let save_resp = handle_request(JsonRpcRequest {
+        id: 601,
+        method: "apikey/modelCatalogSave".to_string(),
+        params: Some(serde_json::json!({
+            "slug": "gpt-5-custom",
+            "displayName": "GPT-5 Custom",
+            "description": "Managed custom model",
+            "sourceKind": "custom",
+            "userEdited": true,
+            "supportedInApi": true,
+            "visibility": "list",
+            "inputModalities": ["text"],
+            "additionalSpeedTiers": ["priority"],
+            "experimentalSupportedTools": ["image_generation"],
+            "availableInPlans": ["pro"],
+            "supportedReasoningLevels": [
+                {
+                    "effort": "high",
+                    "description": "High reasoning"
+                }
+            ],
+            "truncationPolicy": {
+                "mode": "auto",
+                "limit": 4096
+            },
+            "supportsParallelToolCalls": true
+        })),
+    });
+    assert_eq!(
+        save_resp
+            .result
+            .get("slug")
+            .and_then(|value| value.as_str()),
+        Some("gpt-5-custom")
+    );
+    assert_eq!(
+        save_resp
+            .result
+            .get("displayName")
+            .and_then(|value| value.as_str()),
+        Some("GPT-5 Custom")
+    );
+    assert_eq!(
+        save_resp
+            .result
+            .get("sourceKind")
+            .and_then(|value| value.as_str()),
+        Some("custom")
+    );
+
+    let listed = handle_request(JsonRpcRequest {
+        id: 602,
+        method: "apikey/modelCatalogList".to_string(),
+        params: None,
+    });
+    let listed_items = listed
+        .result
+        .get("items")
+        .and_then(|value| value.as_array())
+        .expect("managed model items");
+    assert_eq!(listed_items.len(), 1);
+    assert_eq!(
+        listed_items[0]
+            .get("slug")
+            .and_then(|value| value.as_str()),
+        Some("gpt-5-custom")
+    );
+    assert_eq!(
+        listed_items[0]
+            .get("supportedReasoningLevels")
+            .and_then(|value| value.as_array())
+            .map(|items| items.len()),
+        Some(1)
+    );
+
+    let legacy_models = handle_request(JsonRpcRequest {
+        id: 603,
+        method: "apikey/models".to_string(),
+        params: Some(serde_json::json!({
+            "refreshRemote": false
+        })),
+    });
+    let legacy_items = legacy_models
+        .result
+        .get("items")
+        .and_then(|value| value.as_array())
+        .expect("legacy model options");
+    assert!(legacy_items.iter().any(|item| {
+        item.get("slug").and_then(|value| value.as_str()) == Some("gpt-5-custom")
+            && item.get("displayName").and_then(|value| value.as_str())
+                == Some("GPT-5 Custom")
+    }));
+
+    let delete_resp = handle_request(JsonRpcRequest {
+        id: 604,
+        method: "apikey/modelCatalogDelete".to_string(),
+        params: Some(serde_json::json!({
+            "slug": "gpt-5-custom"
+        })),
+    });
+    assert_eq!(
+        delete_resp
+            .result
+            .get("ok")
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+
+    let after_delete = handle_request(JsonRpcRequest {
+        id: 605,
+        method: "apikey/modelCatalogList".to_string(),
+        params: None,
+    });
+    assert_eq!(
+        after_delete
+            .result
+            .get("items")
+            .and_then(|value| value.as_array())
+            .map(|items| items.len()),
+        Some(0)
+    );
+}
+
+#[test]
 fn audit_list_read_operation_does_not_create_audit_log() {
     let (_db_scope, storage) = setup_test_db("audit-list-read");
 

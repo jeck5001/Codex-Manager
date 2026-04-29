@@ -6,6 +6,7 @@ export const APP_NAV_ITEMS = [
   { id: "emailServices", name: "邮箱服务", href: "/email-services/" },
   { id: "hotmail", name: "Hotmail", href: "/hotmail/" },
   { id: "apiKeys", name: "平台密钥", href: "/apikeys/" },
+  { id: "models", name: "模型管理", href: "/models/" },
   { id: "logs", name: "请求日志", href: "/logs/" },
   { id: "audit", name: "审计日志", href: "/audit/" },
   { id: "costs", name: "费用统计", href: "/costs/" },
@@ -16,7 +17,7 @@ export const APP_NAV_ITEMS = [
 export type AppNavItemId = (typeof APP_NAV_ITEMS)[number]["id"];
 
 export const APP_NAV_ALWAYS_VISIBLE_IDS: AppNavItemId[] = ["settings"];
-const APP_NAV_UPGRADE_VISIBLE_IDS: AppNavItemId[] = ["hotmail"];
+const APP_NAV_UPGRADE_VISIBLE_IDS: AppNavItemId[] = ["hotmail", "models"];
 
 export const APP_NAV_DEFAULT_VISIBLE_IDS: AppNavItemId[] = APP_NAV_ITEMS.map(
   (item) => item.id

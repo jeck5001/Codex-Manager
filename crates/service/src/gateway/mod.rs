@@ -24,6 +24,8 @@ mod metrics;
 mod model_picker;
 #[path = "auth/openai_fallback.rs"]
 mod openai_fallback;
+#[path = "request/official_responses_http.rs"]
+mod official_responses_http;
 mod protocol_adapter;
 #[path = "request/request_entry.rs"]
 mod request_entry;
