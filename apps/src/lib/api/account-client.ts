@@ -9,6 +9,7 @@ import {
   normalizeApiKeyRateLimit,
   normalizeApiKeyUsageStats,
   normalizeLoginStartResult,
+  normalizeManagedModelCatalog,
   normalizeModelOptions,
   normalizeUsageAggregateSummary,
   normalizeUsageList,
@@ -38,6 +39,8 @@ import {
   ChatgptAuthTokensRefreshResult,
   CurrentAccessTokenAccountReadResult,
   LoginStatusResult,
+  ManagedModelCatalog,
+  ManagedModelInfo,
   LoginStartResult,
   ModelOption,
   RegisterAvailableServicesResult,
@@ -132,6 +135,14 @@ interface ApiKeyPayload {
   upstreamBaseUrl?: string | null;
   staticHeadersJson?: string | null;
   expiresAt?: number | null;
+}
+
+export interface ManagedModelPayload {
+  previousSlug?: string | null;
+  sourceKind?: string | null;
+  userEdited?: boolean | null;
+  sortIndex?: number | null;
+  model: ManagedModelInfo;
 }
 
 interface RegisterStartPayload {
@@ -2095,6 +2106,38 @@ export const accountClient = {
     );
     return normalizeModelOptions(result);
   },
+  async listManagedModels(refreshRemote?: boolean): Promise<ManagedModelCatalog> {
+    const result = await invoke<unknown>(
+      "service_apikey_model_catalog_list",
+      withAddr({ refreshRemote })
+    );
+    return normalizeManagedModelCatalog(result);
+  },
+  async saveManagedModel(payload: ManagedModelPayload): Promise<ManagedModelInfo> {
+    const {
+      sourceKind: _modelSourceKind,
+      userEdited: _modelUserEdited,
+      sortIndex: _modelSortIndex,
+      ...modelFields
+    } = payload.model;
+    const result = await invoke<unknown>(
+      "service_apikey_model_catalog_save",
+      withAddr({
+        previousSlug: payload.previousSlug ?? null,
+        sourceKind: payload.sourceKind ?? null,
+        userEdited: payload.userEdited ?? null,
+        sortIndex: payload.sortIndex ?? null,
+        ...modelFields,
+      })
+    );
+    const item = normalizeManagedModelCatalog({ items: [result] }).items[0];
+    if (!item) {
+      throw new Error("保存模型返回无效数据");
+    }
+    return item;
+  },
+  deleteManagedModel: (slug: string) =>
+    invoke("service_apikey_model_catalog_delete", withAddr({ slug })),
   async readApiKeySecret(keyId: string): Promise<string> {
     const result = await invoke<{ key?: string }>(
       "service_apikey_read_secret",
