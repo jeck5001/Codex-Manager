@@ -9,18 +9,20 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
+#[cfg(target_os = "linux")]
+use std::{net::Ipv4Addr, net::ToSocketAddrs};
 
 use axum::body::Bytes;
 use axum::extract::{Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
-use axum::middleware::{self, Next};
+use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
-use axum::Router;
+use axum::{Json, Router};
 use rand::RngCore;
 use tokio::sync::{watch, Mutex};
+use tower_http::services::{ServeDir, ServeFile};
 
-const DEFAULT_WEB_ADDR: &str = "localhost:48761";
 const WEB_AUTH_COOKIE_NAME: &str = "codexmanager_web_auth";
 
 #[derive(Clone)]
@@ -33,9 +35,19 @@ struct AppState {
     shutdown_tx: watch::Sender<bool>,
     spawned_service: Arc<Mutex<bool>>,
     missing_ui_html: Arc<String>,
-    web_root: Arc<PathBuf>,
 }
 
+/// 函数 `read_env_trim`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn read_env_trim(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
@@ -43,6 +55,17 @@ fn read_env_trim(name: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+/// 函数 `normalize_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_addr(raw: &str) -> Option<String> {
     let mut value = raw.trim();
     if value.is_empty() {
@@ -64,18 +87,186 @@ fn normalize_addr(raw: &str) -> Option<String> {
     Some(value.to_string())
 }
 
+/// 函数 `normalize_connect_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
+fn normalize_connect_addr(raw: &str) -> Option<String> {
+    let normalized = normalize_addr(raw)?;
+    let Some((host, port)) = normalized.rsplit_once(':') else {
+        return Some(rewrite_linux_docker_host_addr(normalized));
+    };
+    let normalized = match host {
+        "0.0.0.0" | "::" | "[::]" => Some(format!("localhost:{port}")),
+        _ => Some(normalized),
+    }?;
+    Some(rewrite_linux_docker_host_addr(normalized))
+}
+
+/// 函数 `browser_open_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
+fn browser_open_addr(raw: &str) -> Option<String> {
+    let normalized = normalize_addr(raw)?;
+    let Some((host, port)) = normalized.rsplit_once(':') else {
+        return Some(normalized);
+    };
+    match host {
+        "0.0.0.0" | "::" | "[::]" => Some(format!("127.0.0.1:{port}")),
+        _ => Some(normalized),
+    }
+}
+
+/// 函数 `resolve_service_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_service_addr() -> String {
     read_env_trim("CODEXMANAGER_SERVICE_ADDR")
-        .and_then(|v| normalize_addr(&v))
+        .and_then(|v| normalize_connect_addr(&v))
         .unwrap_or_else(|| codexmanager_service::DEFAULT_ADDR.to_string())
 }
 
+/// 函数 `rewrite_linux_docker_host_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-10
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
+#[cfg(target_os = "linux")]
+fn rewrite_linux_docker_host_addr(addr: String) -> String {
+    let Some((host, port)) = addr.rsplit_once(':') else {
+        return addr;
+    };
+    if !host.eq_ignore_ascii_case("host.docker.internal") {
+        return addr;
+    }
+    if addr
+        .to_socket_addrs()
+        .ok()
+        .and_then(|mut addrs| addrs.next())
+        .is_some()
+    {
+        return addr;
+    }
+    linux_default_gateway_ipv4()
+        .map(|gateway| format!("{gateway}:{port}"))
+        .unwrap_or(addr)
+}
+
+/// 函数 `rewrite_linux_docker_host_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-10
+///
+/// # 参数
+/// - addr: 参数 addr
+///
+/// # 返回
+/// 返回函数执行结果
+#[cfg(not(target_os = "linux"))]
+fn rewrite_linux_docker_host_addr(addr: String) -> String {
+    addr
+}
+
+/// 函数 `linux_default_gateway_ipv4`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-10
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
+#[cfg(target_os = "linux")]
+fn linux_default_gateway_ipv4() -> Option<Ipv4Addr> {
+    let routes = std::fs::read_to_string("/proc/net/route").ok()?;
+    parse_linux_default_gateway_ipv4(&routes)
+}
+
+/// 函数 `parse_linux_default_gateway_ipv4`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-10
+///
+/// # 参数
+/// - routes: 参数 routes
+///
+/// # 返回
+/// 返回函数执行结果
+#[cfg(target_os = "linux")]
+fn parse_linux_default_gateway_ipv4(routes: &str) -> Option<Ipv4Addr> {
+    for line in routes.lines().skip(1) {
+        let columns = line.split_whitespace().collect::<Vec<_>>();
+        if columns.len() < 3 || columns[1] != "00000000" {
+            continue;
+        }
+        let gateway = u32::from_str_radix(columns[2], 16).ok()?;
+        let bytes = gateway.to_le_bytes();
+        return Some(Ipv4Addr::new(bytes[0], bytes[1], bytes[2], bytes[3]));
+    }
+    None
+}
+
+/// 函数 `resolve_web_addr`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_web_addr() -> String {
     read_env_trim("CODEXMANAGER_WEB_ADDR")
         .and_then(|v| normalize_addr(&v))
-        .unwrap_or_else(|| DEFAULT_WEB_ADDR.to_string())
+        .unwrap_or_else(codexmanager_service::default_web_listener_addr)
 }
 
+/// 函数 `resolve_web_root`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn resolve_web_root() -> PathBuf {
     if let Some(v) = read_env_trim("CODEXMANAGER_WEB_ROOT") {
         let p = PathBuf::from(v);
@@ -87,6 +278,17 @@ fn resolve_web_root() -> PathBuf {
     exe_dir().join("web")
 }
 
+/// 函数 `exe_dir`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn exe_dir() -> PathBuf {
     std::env::current_exe()
         .ok()
@@ -95,10 +297,32 @@ fn exe_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+/// 函数 `ensure_index_file`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - index: 参数 index
+///
+/// # 返回
+/// 返回函数执行结果
 fn ensure_index_file(index: &Path) -> bool {
     index.is_file()
 }
 
+/// 函数 `is_json_content_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - headers: 参数 headers
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_json_content_type(headers: &HeaderMap) -> bool {
     headers
         .get("content-type")
@@ -108,6 +332,17 @@ fn is_json_content_type(headers: &HeaderMap) -> bool {
         .unwrap_or(false)
 }
 
+/// 函数 `escape_html`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - text: 参数 text
+///
+/// # 返回
+/// 返回函数执行结果
 fn escape_html(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -116,30 +351,43 @@ fn escape_html(text: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-async fn access_log(request: Request, next: Next) -> Response {
-    let method = request.method().clone();
-    let path = request
-        .uri()
-        .path_and_query()
-        .map(|value| value.as_str().to_string())
-        .unwrap_or_else(|| request.uri().path().to_string());
-    let started_at = std::time::Instant::now();
-
-    let response = next.run(request).await;
-    let status = response.status();
-    let elapsed_ms = started_at.elapsed().as_millis();
-
-    log::info!(
-        "event=web_access method={} path={} status={} duration_ms={}",
-        method,
-        path,
-        status.as_u16(),
-        elapsed_ms
-    );
-
-    response
+/// 函数 `runtime_info`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
+async fn runtime_info() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "mode": "web-gateway",
+        "rpcBaseUrl": "/api/rpc",
+        "canManageService": false,
+        "canSelfUpdate": false,
+        "canCloseToTray": false,
+        "canOpenLocalDir": false,
+        "canUseBrowserFileImport": true,
+        "canUseBrowserDownloadExport": true
+    }))
 }
 
+/// 函数 `serve_on_listener`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - listener: 参数 listener
+/// - app: 参数 app
+/// - shutdown_rx: 参数 shutdown_rx
+///
+/// # 返回
+/// 返回函数执行结果
 async fn serve_on_listener(
     listener: tokio::net::TcpListener,
     app: Router,
@@ -157,6 +405,19 @@ async fn serve_on_listener(
         .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
 }
 
+/// 函数 `run_web_server`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - app: 参数 app
+/// - shutdown_rx: 参数 shutdown_rx
+///
+/// # 返回
+/// 返回函数执行结果
 async fn run_web_server(
     addr: &str,
     app: Router,
@@ -187,6 +448,17 @@ async fn run_web_server(
     serve_on_listener(listener, app, shutdown_rx).await
 }
 
+/// 函数 `async_main`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 async fn async_main() {
     let service_addr = resolve_service_addr();
     let web_addr = resolve_web_addr();
@@ -197,8 +469,13 @@ async fn async_main() {
     let rpc_token = codexmanager_service::rpc_auth_token().to_string();
 
     let spawned_service: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
-    let spawn_err =
-        service_gateway::ensure_service_running(&service_addr, &exe_dir(), &spawned_service).await;
+    let spawn_err = service_gateway::ensure_service_running(
+        &service_addr,
+        &rpc_token,
+        &exe_dir(),
+        &spawned_service,
+    )
+    .await;
 
     let mut missing_detail = format!(
         "web root invalid: {} (index.html missing)",
@@ -223,28 +500,20 @@ async fn async_main() {
         shutdown_tx,
         spawned_service: spawned_service.clone(),
         missing_ui_html,
-        web_root: Arc::new(web_root.clone()),
     });
 
     let mut protected_app = Router::new()
         .route("/api/rpc", post(service_gateway::rpc_proxy))
-        .route(
-            "/api/export/auditlogs",
-            get(service_gateway::auditlog_export_proxy),
-        )
-        .route(
-            "/api/export/requestlogs",
-            get(service_gateway::requestlog_export_proxy),
-        )
         .route("/__quit", get(service_gateway::quit));
 
     let disk_ok = ensure_index_file(&index);
     let using_explicit_root = read_env_trim("CODEXMANAGER_WEB_ROOT").is_some();
     if using_explicit_root || disk_ok {
         if disk_ok {
-            protected_app = protected_app
-                .route("/", get(ui_assets::serve_disk_index))
-                .route("/{*path}", get(ui_assets::serve_disk_asset));
+            let static_service = ServeDir::new(&web_root)
+                .append_index_html_on_directories(true)
+                .not_found_service(ServeFile::new(index));
+            protected_app = protected_app.fallback_service(static_service);
         } else {
             protected_app = protected_app
                 .route("/", get(ui_assets::serve_missing_ui))
@@ -265,24 +534,19 @@ async fn async_main() {
         auth::web_auth_middleware,
     ));
     let app = Router::new()
+        .route("/api/runtime", get(runtime_info))
         .route("/__auth_status", get(auth::auth_status))
         .route("/__login", get(auth::login_page).post(auth::login_submit))
         .route("/__logout", get(auth::logout).post(auth::logout))
-        .route(
-            "/api/management/status",
-            get(service_gateway::management_status),
-        )
-        .route(
-            "/api/management/rpc",
-            post(service_gateway::management_rpc_proxy),
-        )
         .merge(protected_app)
-        .layer(middleware::from_fn(access_log))
         .with_state(state);
 
     println!("codexmanager-web listening on {web_addr} (service={service_addr})");
 
     let open_url = format!("http://{}", web_addr.trim());
+    let open_url = browser_open_addr(&web_addr)
+        .map(|addr| format!("http://{addr}"))
+        .unwrap_or(open_url);
     if read_env_trim("CODEXMANAGER_WEB_NO_OPEN").is_none() {
         let _ = webbrowser::open(&open_url);
     }
@@ -293,9 +557,19 @@ async fn async_main() {
     }
 }
 
+/// 函数 `main`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn main() {
     codexmanager_service::portable::bootstrap_current_process();
-    codexmanager_service::initialize_process_logging();
     let _ = codexmanager_service::initialize_storage_if_needed();
     codexmanager_service::sync_runtime_settings_from_storage();
 
@@ -306,7 +580,19 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::to_bytes;
 
+    /// 函数 `web_auth_cookie_is_scoped_by_process_session_key`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn web_auth_cookie_is_scoped_by_process_session_key() {
         let password_hash = "sha256$abc$def";
@@ -318,6 +604,17 @@ mod tests {
         assert_ne!(first, second);
     }
 
+    /// 函数 `parse_cookie_value_returns_matching_cookie`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn parse_cookie_value_returns_matching_cookie() {
         let mut headers = HeaderMap::new();
@@ -329,5 +626,101 @@ mod tests {
         let actual = auth::parse_cookie_value(&headers, WEB_AUTH_COOKIE_NAME);
 
         assert_eq!(actual.as_deref(), Some("token-123"));
+    }
+
+    /// 函数 `normalize_connect_addr_maps_all_interfaces_to_localhost`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
+    #[test]
+    fn normalize_connect_addr_maps_all_interfaces_to_localhost() {
+        assert_eq!(
+            normalize_connect_addr("0.0.0.0:48760").as_deref(),
+            Some("localhost:48760")
+        );
+        assert_eq!(
+            normalize_connect_addr("[::]:48760").as_deref(),
+            Some("localhost:48760")
+        );
+        assert_eq!(
+            normalize_connect_addr("192.168.1.8:48760").as_deref(),
+            Some("192.168.1.8:48760")
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn parse_linux_default_gateway_ipv4_reads_default_route() {
+        let routes = "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\neth0\t00000000\t010011AC\t0003\t0\t0\t0\t00000000\t0\t0\t0\n";
+        assert_eq!(
+            parse_linux_default_gateway_ipv4(routes),
+            Some(Ipv4Addr::new(172, 17, 0, 1))
+        );
+    }
+
+    /// 函数 `browser_open_addr_maps_all_interfaces_to_loopback`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
+    #[test]
+    fn browser_open_addr_maps_all_interfaces_to_loopback() {
+        assert_eq!(
+            browser_open_addr("0.0.0.0:48761").as_deref(),
+            Some("127.0.0.1:48761")
+        );
+        assert_eq!(
+            browser_open_addr("[::]:48761").as_deref(),
+            Some("127.0.0.1:48761")
+        );
+        assert_eq!(
+            browser_open_addr("192.168.1.8:48761").as_deref(),
+            Some("192.168.1.8:48761")
+        );
+    }
+
+    /// 函数 `runtime_info_reports_web_gateway_capabilities`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
+    #[tokio::test]
+    async fn runtime_info_reports_web_gateway_capabilities() {
+        let response = runtime_info().await.into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read runtime response body");
+        let payload: serde_json::Value =
+            serde_json::from_slice(&bytes).expect("parse runtime response json");
+
+        assert_eq!(payload["mode"], "web-gateway");
+        assert_eq!(payload["rpcBaseUrl"], "/api/rpc");
+        assert_eq!(payload["canManageService"], false);
+        assert_eq!(payload["canSelfUpdate"], false);
+        assert_eq!(payload["canCloseToTray"], false);
+        assert_eq!(payload["canOpenLocalDir"], false);
+        assert_eq!(payload["canUseBrowserFileImport"], true);
+        assert_eq!(payload["canUseBrowserDownloadExport"], true);
     }
 }

@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `builtin_missing_ui_html`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn builtin_missing_ui_html(detail: &str) -> String {
     let detail = escape_html(detail);
     format!(
@@ -34,31 +45,79 @@ pub(super) fn builtin_missing_ui_html(detail: &str) -> String {
     )
 }
 
+/// 函数 `serve_missing_ui`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn serve_missing_ui(State(state): State<Arc<AppState>>) -> Html<String> {
     Html((*state.missing_ui_html).clone())
 }
 
-pub(super) async fn serve_disk_index(State(state): State<Arc<AppState>>) -> Response {
-    serve_disk_path(state.web_root.as_ref(), "index.html")
-}
-
-pub(super) async fn serve_disk_asset(
-    State(state): State<Arc<AppState>>,
-    axum::extract::Path(path): axum::extract::Path<String>,
-) -> Response {
-    serve_disk_path(state.web_root.as_ref(), &path)
-}
-
+/// 函数 `serve_embedded_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn serve_embedded_index() -> Response {
     serve_embedded_path("index.html")
 }
 
+/// 函数 `serve_embedded_asset`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn serve_embedded_asset(
     axum::extract::Path(path): axum::extract::Path<String>,
 ) -> Response {
     serve_embedded_path(&path)
 }
 
+/// 函数 `looks_like_asset_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
+fn looks_like_asset_path(path: &str) -> bool {
+    path.rsplit('/').next().unwrap_or(path).contains('.')
+}
+
+/// 函数 `serve_embedded_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
 fn serve_embedded_path(path: &str) -> Response {
     let raw = path.trim_start_matches('/');
     if raw.contains("..") {
@@ -80,94 +139,55 @@ fn serve_embedded_path(path: &str) -> Response {
     out
 }
 
-fn serve_disk_path(web_root: &std::path::Path, path: &str) -> Response {
-    let Some(asset_path) = resolve_disk_asset_path(web_root, path) else {
-        return (StatusCode::NOT_FOUND, "missing ui").into_response();
-    };
-    let Ok(bytes) = std::fs::read(&asset_path) else {
-        return (StatusCode::NOT_FOUND, "missing ui").into_response();
-    };
-    let mime = guess_disk_mime(&asset_path);
-
-    let mut out = Response::new(axum::body::Body::from(bytes));
-    out.headers_mut()
-        .insert("content-type", axum::http::HeaderValue::from_static(mime));
-    out
-}
-
-fn resolve_disk_asset_path(web_root: &std::path::Path, path: &str) -> Option<std::path::PathBuf> {
+/// 函数 `resolve_embedded_asset`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - path: 参数 path
+///
+/// # 返回
+/// 返回函数执行结果
+fn resolve_embedded_asset(path: &str) -> Option<(String, &'static [u8])> {
     let raw = path.trim_start_matches('/');
-    if raw.contains("..") {
-        return None;
-    }
+    let trimmed = raw.trim_end_matches('/');
+    let mut candidates = Vec::with_capacity(3);
 
     if raw.is_empty() {
-        let index = web_root.join("index.html");
-        return index.is_file().then_some(index);
-    }
-
-    let direct = web_root.join(raw);
-    if direct.is_file() {
-        return Some(direct);
-    }
-
-    let normalized = raw.trim_end_matches('/');
-    if !normalized.is_empty() {
-        let nested_index = web_root.join(normalized).join("index.html");
-        if nested_index.is_file() {
-            return Some(nested_index);
+        candidates.push("index.html".to_string());
+    } else {
+        candidates.push(raw.to_string());
+        if !trimmed.is_empty() && !looks_like_asset_path(trimmed) {
+            candidates.push(format!("{trimmed}/index.html"));
         }
     }
 
-    None
-}
-
-fn guess_disk_mime(path: &std::path::Path) -> &'static str {
-    match path
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or("")
-    {
-        "html" => "text/html; charset=utf-8",
-        "css" => "text/css; charset=utf-8",
-        "js" => "text/javascript; charset=utf-8",
-        "json" => "application/json",
-        "svg" => "image/svg+xml",
-        "ico" => "image/x-icon",
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "txt" => "text/plain; charset=utf-8",
-        _ => "application/octet-stream",
-    }
-}
-
-fn resolve_embedded_asset(path: &str) -> Option<(String, &'static [u8])> {
-    let raw = path.trim_start_matches('/');
-    if raw.contains("..") {
-        return None;
+    for candidate in candidates {
+        if let Some(bytes) = embedded_ui::read_asset_bytes(&candidate) {
+            return Some((candidate, bytes));
+        }
     }
 
-    if raw.is_empty() {
-        return embedded_ui::read_asset_bytes("index.html")
-            .map(|bytes| ("index.html".to_string(), bytes));
-    }
-
-    embedded_ui::read_asset_bytes(raw)
-        .map(|bytes| (raw.to_string(), bytes))
-        .or_else(|| {
-            let normalized = raw.trim_end_matches('/');
-            if normalized.is_empty() {
-                return None;
-            }
-            let nested_index = format!("{normalized}/index.html");
-            embedded_ui::read_asset_bytes(&nested_index).map(|bytes| (nested_index, bytes))
-        })
+    embedded_ui::read_asset_bytes("index.html").map(|bytes| ("index.html".to_string(), bytes))
 }
 
 #[cfg(all(test, feature = "embedded-ui"))]
 mod tests {
     use super::*;
 
+    /// 函数 `spa_route_fallback_uses_html_content_type`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn spa_route_fallback_uses_html_content_type() {
         let response = serve_embedded_path("accounts");
@@ -182,10 +202,23 @@ mod tests {
         );
     }
 
+    /// 函数 `directory_route_prefers_embedded_directory_index`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
-    fn embedded_route_resolves_nested_index() {
-        let (path, _) = resolve_embedded_asset("payment").expect("payment route asset");
+    fn directory_route_prefers_embedded_directory_index() {
+        let (served_path, _) = resolve_embedded_asset("accounts/").expect("accounts asset");
+        assert_eq!(served_path, "accounts/index.html");
 
-        assert_eq!(path, "payment/index.html");
+        let (served_path, _) = resolve_embedded_asset("accounts").expect("accounts asset");
+        assert_eq!(served_path, "accounts/index.html");
     }
 }

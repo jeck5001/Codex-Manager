@@ -1,63 +1,123 @@
 use super::*;
 
-const MANAGEMENT_SECRET_HEADER: &str = "x-codexmanager-management-secret";
-
+/// 函数 `should_spawn_service`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn should_spawn_service() -> bool {
     read_env_trim("CODEXMANAGER_WEB_NO_SPAWN_SERVICE").is_none()
 }
 
-fn json_error_response(status: StatusCode, error: &str) -> Response {
-    (
-        status,
-        axum::Json(serde_json::json!({
-            "error": error,
-        })),
-    )
-        .into_response()
+/// 函数 `service_rpc_probe`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - service_addr: 参数 service_addr
+/// - rpc_token: 参数 rpc_token
+///
+/// # 返回
+/// 返回函数执行结果
+async fn service_rpc_probe(service_addr: &str, rpc_token: &str) -> Result<(), String> {
+    let trimmed = service_addr.trim();
+    if trimmed.is_empty() {
+        return Err("service address is empty".to_string());
+    }
+
+    let response = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_millis(1200))
+        .build()
+        .map_err(|err| format!("probe client init failed: {err}"))?
+        .post(format!("http://{trimmed}/rpc"))
+        .header("content-type", "application/json")
+        .header("x-codexmanager-rpc-token", rpc_token)
+        .body(
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {}
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .map_err(|err| format!("probe request failed: {err}"))?;
+
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("rpc_token_mismatch".to_string());
+    }
+    if !response.status().is_success() {
+        return Err(format!("probe http {}", response.status()));
+    }
+
+    let payload = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|err| format!("probe response parse failed: {err}"))?;
+    let result = payload.get("result").and_then(|value| value.as_object());
+    let user_agent = result
+        .and_then(|value| value.get("userAgent").or_else(|| value.get("user_agent")))
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    let codex_home = result
+        .and_then(|value| value.get("codexHome").or_else(|| value.get("codex_home")))
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    if !user_agent.contains("codex_cli_rs/") || codex_home.is_empty() {
+        return Err("unexpected service on target port".to_string());
+    }
+    Ok(())
 }
 
-fn resolve_management_secret(headers: &HeaderMap) -> Option<String> {
-    if let Some(value) = headers
-        .get(MANAGEMENT_SECRET_HEADER)
-        .and_then(|value| value.to_str().ok())
-    {
-        let trimmed = value.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_string());
+/// 函数 `shutdown_existing_service`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - service_addr: 参数 service_addr
+///
+/// # 返回
+/// 返回函数执行结果
+async fn shutdown_existing_service(service_addr: &str) -> bool {
+    let addr = service_addr.to_string();
+    let _ = tokio::task::spawn_blocking(move || {
+        codexmanager_service::request_shutdown(&addr);
+    })
+    .await;
+
+    for _ in 0..30 {
+        if !tcp_probe(service_addr).await {
+            return true;
         }
+        tokio::time::sleep(Duration::from_millis(100)).await;
     }
-
-    let auth = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
-    let token = auth.strip_prefix("Bearer ")?.trim();
-    if token.is_empty() {
-        None
-    } else {
-        Some(token.to_string())
-    }
+    false
 }
 
-fn management_auth_error_response(headers: &HeaderMap) -> Option<Response> {
-    if !codexmanager_service::current_remote_management_enabled() {
-        return Some(json_error_response(
-            StatusCode::FORBIDDEN,
-            "remote_management_disabled",
-        ));
-    }
-    let Some(candidate) = resolve_management_secret(headers) else {
-        return Some(json_error_response(
-            StatusCode::UNAUTHORIZED,
-            "remote_management_secret_required",
-        ));
-    };
-    if !codexmanager_service::verify_remote_management_secret(&candidate) {
-        return Some(json_error_response(
-            StatusCode::UNAUTHORIZED,
-            "remote_management_secret_invalid",
-        ));
-    }
-    None
-}
-
+/// 函数 `tcp_probe`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn tcp_probe(addr: &str) -> bool {
     let addr = addr.trim();
     if addr.is_empty() {
@@ -74,6 +134,17 @@ pub(super) async fn tcp_probe(addr: &str) -> bool {
     .is_ok()
 }
 
+/// 函数 `service_bin_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - dir: 参数 dir
+///
+/// # 返回
+/// 返回函数执行结果
 fn service_bin_path(dir: &Path) -> PathBuf {
     #[cfg(target_os = "windows")]
     {
@@ -85,6 +156,18 @@ fn service_bin_path(dir: &Path) -> PathBuf {
     }
 }
 
+/// 函数 `spawn_service_detached`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - dir: 参数 dir
+/// - service_addr: 参数 service_addr
+///
+/// # 返回
+/// 返回函数执行结果
 fn spawn_service_detached(dir: &Path, service_addr: &str) -> std::io::Result<()> {
     let bin = service_bin_path(dir);
     let mut cmd = Command::new(bin);
@@ -102,13 +185,39 @@ fn spawn_service_detached(dir: &Path, service_addr: &str) -> std::io::Result<()>
     Ok(())
 }
 
+/// 函数 `ensure_service_running`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn ensure_service_running(
     service_addr: &str,
+    rpc_token: &str,
     dir: &Path,
     spawned_service: &Arc<Mutex<bool>>,
 ) -> Option<String> {
     if tcp_probe(service_addr).await {
-        return None;
+        match service_rpc_probe(service_addr, rpc_token).await {
+            Ok(()) => return None,
+            Err(err) if err == "rpc_token_mismatch" && should_spawn_service() => {
+                if !shutdown_existing_service(service_addr).await {
+                    return Some(format!(
+                        "service reachable at {service_addr} but rejected rpc token; old instance is still occupying the port"
+                    ));
+                }
+            }
+            Err(err) => {
+                return Some(format!(
+                    "service reachable at {service_addr} but startup handshake failed: {err}"
+                ));
+            }
+        }
     }
     if !should_spawn_service() {
         return Some(format!(
@@ -129,17 +238,38 @@ pub(super) async fn ensure_service_running(
     }
     *spawned_service.lock().await = true;
 
+    let mut last_probe_error: Option<String> = None;
     for _ in 0..50 {
         if tcp_probe(service_addr).await {
-            return None;
+            match service_rpc_probe(service_addr, rpc_token).await {
+                Ok(()) => return None,
+                Err(err) => {
+                    last_probe_error = Some(format!(
+                        "service became reachable but startup handshake failed: {err}"
+                    ));
+                }
+            }
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    Some(format!(
-        "service still not reachable at {service_addr} after spawn"
-    ))
+    Some(
+        last_probe_error.unwrap_or_else(|| {
+            format!("service still not reachable at {service_addr} after spawn")
+        }),
+    )
 }
 
+/// 函数 `rpc_proxy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn rpc_proxy(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -153,20 +283,13 @@ pub(super) async fn rpc_proxy(
         .post(&state.service_rpc_url)
         .header("content-type", "application/json")
         .header("x-codexmanager-rpc-token", &state.rpc_token)
-        .header(
-            "x-codexmanager-operator",
-            headers
-                .get("x-codexmanager-operator")
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or("web-ui"),
-        )
         .body(body)
         .send()
         .await;
     let resp = match resp {
         Ok(v) => v,
         Err(err) => {
-            let msg = format!("upstream error: {err}");
+            let msg = format_upstream_error_message(state.service_addr.as_str(), &err);
             return (StatusCode::BAD_GATEWAY, msg).into_response();
         }
     };
@@ -188,169 +311,39 @@ pub(super) async fn rpc_proxy(
     out
 }
 
-pub(super) async fn management_rpc_proxy(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Response {
-    if let Some(response) = management_auth_error_response(&headers) {
-        return response;
+/// 函数 `format_upstream_error_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-10
+///
+/// # 参数
+/// - service_addr: 参数 service_addr
+/// - err: 参数 err
+///
+/// # 返回
+/// 返回函数执行结果
+fn format_upstream_error_message(service_addr: &str, err: impl std::fmt::Display) -> String {
+    let mut message = format!("upstream error: {err}");
+    if service_addr.contains("host.docker.internal") {
+        message.push_str(
+            "; Linux Docker 中 `host.docker.internal` 可能不可解析，建议让 web 与 service 加入同一 Docker 网络，并使用容器地址如 `codexmanager-service:48760`；如果必须走宿主机端口，请增加 `--add-host=host.docker.internal:host-gateway`",
+        );
     }
-    if !is_json_content_type(&headers) {
-        return (StatusCode::UNSUPPORTED_MEDIA_TYPE, "{}").into_response();
-    }
-
-    let resp = state
-        .client
-        .post(&state.service_rpc_url)
-        .header("content-type", "application/json")
-        .header("x-codexmanager-rpc-token", &state.rpc_token)
-        .header(
-            "x-codexmanager-operator",
-            headers
-                .get("x-codexmanager-operator")
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or("remote-management"),
-        )
-        .body(body)
-        .send()
-        .await;
-    let resp = match resp {
-        Ok(v) => v,
-        Err(err) => {
-            let msg = format!("upstream error: {err}");
-            return (StatusCode::BAD_GATEWAY, msg).into_response();
-        }
-    };
-
-    let status = resp.status();
-    let bytes = match resp.bytes().await {
-        Ok(v) => v,
-        Err(err) => {
-            let msg = format!("upstream read error: {err}");
-            return (StatusCode::BAD_GATEWAY, msg).into_response();
-        }
-    };
-    let mut out = Response::new(axum::body::Body::from(bytes));
-    *out.status_mut() = status;
-    out.headers_mut().insert(
-        "content-type",
-        axum::http::HeaderValue::from_static("application/json"),
-    );
-    out
+    message
 }
 
-pub(super) async fn management_status(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-) -> Response {
-    if let Some(response) = management_auth_error_response(&headers) {
-        return response;
-    }
-
-    axum::Json(serde_json::json!({
-        "enabled": codexmanager_service::current_remote_management_enabled(),
-        "secretConfigured": codexmanager_service::remote_management_secret_configured(),
-        "serviceAddr": state.service_addr,
-        "serviceReachable": tcp_probe(&state.service_addr).await,
-        "webAccessPasswordConfigured": codexmanager_service::web_access_password_configured(),
-        "webAccessTwoFactorEnabled": codexmanager_service::web_auth_two_factor_enabled(),
-    }))
-    .into_response()
-}
-
-pub(super) async fn requestlog_export_proxy(
-    State(state): State<Arc<AppState>>,
-    request: Request,
-) -> Response {
-    let query = request
-        .uri()
-        .query()
-        .map(|value| format!("?{value}"))
-        .unwrap_or_default();
-    let target_url = format!("http://{}/export/requestlogs{}", state.service_addr, query);
-    let resp = state
-        .client
-        .get(target_url)
-        .header("x-codexmanager-rpc-token", &state.rpc_token)
-        .send()
-        .await;
-    let resp = match resp {
-        Ok(value) => value,
-        Err(err) => {
-            let msg = format!("upstream error: {err}");
-            return (StatusCode::BAD_GATEWAY, msg).into_response();
-        }
-    };
-
-    let status = resp.status();
-    let forwarded_headers = [
-        axum::http::header::CONTENT_TYPE,
-        axum::http::header::CONTENT_DISPOSITION,
-        axum::http::header::CACHE_CONTROL,
-    ]
-    .into_iter()
-    .filter_map(|header_name| {
-        resp.headers()
-            .get(&header_name)
-            .cloned()
-            .map(|value| (header_name, value))
-    })
-    .collect::<Vec<_>>();
-    let mut out = Response::new(axum::body::Body::from_stream(resp.bytes_stream()));
-    *out.status_mut() = status;
-    for (header_name, value) in forwarded_headers {
-        out.headers_mut().insert(header_name, value);
-    }
-    out
-}
-
-pub(super) async fn auditlog_export_proxy(
-    State(state): State<Arc<AppState>>,
-    request: Request,
-) -> Response {
-    let query = request
-        .uri()
-        .query()
-        .map(|value| format!("?{value}"))
-        .unwrap_or_default();
-    let target_url = format!("http://{}/export/auditlogs{}", state.service_addr, query);
-    let resp = state
-        .client
-        .get(target_url)
-        .header("x-codexmanager-rpc-token", &state.rpc_token)
-        .send()
-        .await;
-    let resp = match resp {
-        Ok(value) => value,
-        Err(err) => {
-            let msg = format!("upstream error: {err}");
-            return (StatusCode::BAD_GATEWAY, msg).into_response();
-        }
-    };
-
-    let status = resp.status();
-    let forwarded_headers = [
-        axum::http::header::CONTENT_TYPE,
-        axum::http::header::CONTENT_DISPOSITION,
-        axum::http::header::CACHE_CONTROL,
-    ]
-    .into_iter()
-    .filter_map(|header_name| {
-        resp.headers()
-            .get(&header_name)
-            .cloned()
-            .map(|value| (header_name, value))
-    })
-    .collect::<Vec<_>>();
-    let mut out = Response::new(axum::body::Body::from_stream(resp.bytes_stream()));
-    *out.status_mut() = status;
-    for (header_name, value) in forwarded_headers {
-        out.headers_mut().insert(header_name, value);
-    }
-    out
-}
-
+/// 函数 `quit`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) async fn quit(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     if *state.spawned_service.lock().await {
         let addr = state.service_addr.clone();
@@ -365,46 +358,13 @@ pub(super) async fn quit(State(state): State<Arc<AppState>>) -> impl IntoRespons
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::format_upstream_error_message;
 
     #[test]
-    fn resolve_management_secret_prefers_explicit_header() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            MANAGEMENT_SECRET_HEADER,
-            HeaderValue::from_static("secret-header"),
-        );
-        headers.insert(
-            header::AUTHORIZATION,
-            HeaderValue::from_static("Bearer secret-bearer"),
-        );
-
-        assert_eq!(
-            resolve_management_secret(&headers).as_deref(),
-            Some("secret-header")
-        );
-    }
-
-    #[test]
-    fn resolve_management_secret_accepts_bearer_token() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            header::AUTHORIZATION,
-            HeaderValue::from_static("Bearer secret-bearer"),
-        );
-
-        assert_eq!(
-            resolve_management_secret(&headers).as_deref(),
-            Some("secret-bearer")
-        );
-    }
-
-    #[test]
-    fn management_auth_error_requires_feature_enablement() {
-        let headers = HeaderMap::new();
-
-        let response = management_auth_error_response(&headers).expect("response");
-
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    fn format_upstream_error_message_adds_docker_hint_for_host_internal() {
+        let err = std::io::Error::other("dns failed");
+        let message = format_upstream_error_message("host.docker.internal:9760", &err);
+        assert!(message.contains("host.docker.internal"));
+        assert!(message.contains("codexmanager-service:48760"));
     }
 }
