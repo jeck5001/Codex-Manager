@@ -1,5 +1,16 @@
 use super::*;
 
+/// 函数 `html_content_type_detection`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn html_content_type_detection() {
     assert!(is_html_content_type("text/html; charset=utf-8"));
@@ -7,6 +18,17 @@ fn html_content_type_detection() {
     assert!(!is_html_content_type("application/json"));
 }
 
+/// 函数 `apply_request_overrides_accepts_xhigh`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn apply_request_overrides_accepts_xhigh() {
     let body = br#"{"model":"gpt-5.3-codex","reasoning":{"effort":"medium"}}"#.to_vec();
@@ -21,6 +43,17 @@ fn apply_request_overrides_accepts_xhigh() {
     assert_eq!(value["reasoning"]["effort"], "xhigh");
 }
 
+/// 函数 `apply_request_overrides_maps_extra_high_to_xhigh`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn apply_request_overrides_maps_extra_high_to_xhigh() {
     let body = br#"{"model":"gpt-5.3-codex"}"#.to_vec();
@@ -35,6 +68,17 @@ fn apply_request_overrides_maps_extra_high_to_xhigh() {
     assert_eq!(value["reasoning"]["effort"], "xhigh");
 }
 
+/// 函数 `cooldown_reason_maps_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn cooldown_reason_maps_status() {
     assert_eq!(cooldown_reason_for_status(429), CooldownReason::RateLimited);
@@ -44,6 +88,17 @@ fn cooldown_reason_maps_status() {
     assert_eq!(cooldown_reason_for_status(200), CooldownReason::Default);
 }
 
+/// 函数 `challenge_detection_requires_html_content_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn challenge_detection_requires_html_content_type() {
     let html = HeaderValue::from_str("text/html; charset=utf-8").ok();

@@ -4,6 +4,10 @@ import {
   Account,
   AccountListResult,
   AccountUsage,
+  AggregateApi,
+  AggregateApiCreateResult,
+  AggregateApiSecretResult,
+  AggregateApiTestResult,
   AuditLogExportResult,
   AuditLogItem,
   AuditLogListResult,
@@ -52,14 +56,23 @@ import {
   HealthcheckConfig,
   HealthcheckRunResult,
   LoginStartResult,
+  ManagedModelCatalog,
+  ManagedModelInfo,
+  ModelTruncationPolicy,
   ModelTrendItem,
   ModelTrendResult,
   ModelPricingItem,
+  InstalledPluginSummary,
   ModelOption,
+  PluginCatalogEntry,
+  PluginCatalogResult,
+  PluginCatalogTask,
   RequestTrendItem,
   RequestTrendResult,
   OperationAuditItem,
   PluginItem,
+  PluginRunLogSummary,
+  PluginTaskSummary,
   RequestLog,
   RequestLogExportResult,
   RequestLogFilterSummary,
@@ -156,6 +169,22 @@ function normalizeStringList(payload: unknown): string[] {
   return asArray(payload)
     .map((item) => asString(item))
     .filter(Boolean);
+}
+
+function normalizeModelTruncationPolicy(
+  payload: unknown
+): ModelTruncationPolicy | null {
+  const source = asObject(payload);
+  const mode = asString(source.mode);
+  const limit = toNullableNumber(source.limit);
+  if (!mode || limit == null) {
+    return null;
+  }
+  return {
+    ...source,
+    mode,
+    limit: Math.trunc(limit),
+  };
 }
 
 export function normalizeUsageSnapshot(payload: unknown): AccountUsage | null {
@@ -618,6 +647,402 @@ export function normalizePluginList(payload: unknown): PluginItem[] {
     .filter((item): item is PluginItem => Boolean(item));
 }
 
+export function normalizeAggregateApi(item: unknown): AggregateApi | null {
+  const source = asObject(item);
+  const id = asString(source.id);
+  if (!id) return null;
+  return {
+    id,
+    providerType: asString(source.providerType ?? source.provider_type) || "codex",
+    supplierName: asString(source.supplierName ?? source.supplier_name) || null,
+    sort: asInteger(source.sort ?? source.priority, 0, 0),
+    url: asString(source.url),
+    authType: asString(source.authType ?? source.auth_type) || "apikey",
+    authParams: asObject(source.authParams ?? source.auth_params_json),
+    action: asString(source.action) || null,
+    status: asString(source.status),
+    createdAt: toNullableNumber(source.createdAt ?? source.created_at),
+    updatedAt: toNullableNumber(source.updatedAt ?? source.updated_at),
+    lastTestAt: toNullableNumber(source.lastTestAt ?? source.last_test_at),
+    lastTestStatus: asString(source.lastTestStatus ?? source.last_test_status) || null,
+    lastTestError: asString(source.lastTestError ?? source.last_test_error) || null,
+  };
+}
+
+export function normalizeAggregateApiList(payload: unknown): AggregateApi[] {
+  const source = asObject(payload);
+  return asArray(source.items ?? payload)
+    .map((item) => normalizeAggregateApi(item))
+    .filter((item): item is AggregateApi => Boolean(item));
+}
+
+export function normalizeAggregateApiCreateResult(
+  payload: unknown
+): AggregateApiCreateResult {
+  const source = asObject(payload);
+  return {
+    id: asString(source.id),
+    key: asString(source.key),
+  };
+}
+
+export function normalizeAggregateApiSecretResult(
+  payload: unknown
+): AggregateApiSecretResult {
+  const source = asObject(payload);
+  return {
+    id: asString(source.id),
+    key: asString(source.key),
+    authType: asString(source.authType ?? source.auth_type) || "apikey",
+    username: asString(source.username) || null,
+    password: asString(source.password) || null,
+  };
+}
+
+export function normalizeAggregateApiTestResult(
+  payload: unknown
+): AggregateApiTestResult {
+  const source = asObject(payload);
+  return {
+    id: asString(source.id),
+    ok: asBoolean(source.ok),
+    statusCode: toNullableNumber(source.statusCode ?? source.status_code),
+    message: asString(source.message) || null,
+    testedAt: asInteger(source.testedAt ?? source.tested_at, 0, 0),
+    latencyMs: asInteger(source.latencyMs ?? source.latency_ms, 0, 0),
+  };
+}
+
+export function normalizeManagedModelInfo(
+  payload: unknown
+): ManagedModelInfo | null {
+  const source = asObject(payload);
+  const slug = asString(source.slug);
+  if (!slug) return null;
+  return {
+    ...source,
+    slug,
+    displayName: asString(source.displayName ?? source.display_name),
+    description: asString(source.description) || null,
+    defaultReasoningLevel:
+      asString(source.defaultReasoningLevel ?? source.default_reasoning_level) ||
+      null,
+    supportedReasoningLevels: asArray(
+      source.supportedReasoningLevels ?? source.supported_reasoning_levels
+    )
+      .map((item) => asObject(item))
+      .filter((item) => Object.keys(item).length > 0)
+      .map((item) => ({
+        effort: asString(item.effort),
+        description: asString(item.description),
+        ...item,
+      })),
+    shellType: asString(source.shellType ?? source.shell_type) || null,
+    visibility: asString(source.visibility) || null,
+    supportedInApi: asBoolean(source.supportedInApi ?? source.supported_in_api),
+    priority: asInteger(source.priority, 0, 0),
+    additionalSpeedTiers: asArray(
+      source.additionalSpeedTiers ?? source.additional_speed_tiers
+    )
+      .map((item) => asString(item))
+      .filter(Boolean),
+    availabilityNux: asObject(source.availabilityNux ?? source.availability_nux),
+    upgrade: asObject(source.upgrade),
+    baseInstructions:
+      asString(source.baseInstructions ?? source.base_instructions) || null,
+    modelMessages: asObject(source.modelMessages ?? source.model_messages),
+    supportsReasoningSummaries:
+      typeof (source.supportsReasoningSummaries ?? source.supports_reasoning_summaries) ===
+      "boolean"
+        ? Boolean(
+            source.supportsReasoningSummaries ??
+              source.supports_reasoning_summaries
+          )
+        : null,
+    defaultReasoningSummary:
+      asString(source.defaultReasoningSummary ?? source.default_reasoning_summary) ||
+      null,
+    supportVerbosity:
+      typeof (source.supportVerbosity ?? source.support_verbosity) === "boolean"
+        ? Boolean(source.supportVerbosity ?? source.support_verbosity)
+        : null,
+    defaultVerbosity: source.defaultVerbosity ?? source.default_verbosity ?? null,
+    applyPatchToolType:
+      asString(source.applyPatchToolType ?? source.apply_patch_tool_type) || null,
+    webSearchToolType:
+      asString(source.webSearchToolType ?? source.web_search_tool_type) || null,
+    truncationPolicy: normalizeModelTruncationPolicy(
+      source.truncationPolicy ?? source.truncation_policy
+    ),
+    supportsParallelToolCalls:
+      typeof (source.supportsParallelToolCalls ?? source.supports_parallel_tool_calls) ===
+      "boolean"
+        ? Boolean(
+            source.supportsParallelToolCalls ??
+              source.supports_parallel_tool_calls
+          )
+        : null,
+    supportsImageDetailOriginal:
+      typeof (
+        source.supportsImageDetailOriginal ??
+        source.supports_image_detail_original
+      ) === "boolean"
+        ? Boolean(
+            source.supportsImageDetailOriginal ??
+              source.supports_image_detail_original
+          )
+        : null,
+    contextWindow: toNullableNumber(source.contextWindow ?? source.context_window),
+    autoCompactTokenLimit: toNullableNumber(
+      source.autoCompactTokenLimit ?? source.auto_compact_token_limit
+    ),
+    effectiveContextWindowPercent: toNullableNumber(
+      source.effectiveContextWindowPercent ??
+        source.effective_context_window_percent
+    ),
+    experimentalSupportedTools: asArray(
+      source.experimentalSupportedTools ?? source.experimental_supported_tools
+    )
+      .map((item) => asString(item))
+      .filter(Boolean),
+    inputModalities: asArray(source.inputModalities ?? source.input_modalities)
+      .map((item) => asString(item))
+      .filter(Boolean),
+    minimalClientVersion:
+      source.minimalClientVersion ?? source.minimal_client_version ?? null,
+    supportsSearchTool:
+      typeof (source.supportsSearchTool ?? source.supports_search_tool) ===
+      "boolean"
+        ? Boolean(source.supportsSearchTool ?? source.supports_search_tool)
+        : null,
+    availableInPlans: asArray(source.availableInPlans ?? source.available_in_plans)
+      .map((item) => asString(item))
+      .filter(Boolean),
+    sourceKind: asString(source.sourceKind ?? source.source_kind) || "remote",
+    userEdited: asBoolean(source.userEdited ?? source.user_edited, false),
+    sortIndex: asInteger(source.sortIndex ?? source.sort_index, 0, -1),
+    updatedAt: asInteger(source.updatedAt ?? source.updated_at, 0, 0),
+  };
+}
+
+export function normalizeManagedModelCatalog(
+  payload: unknown
+): ManagedModelCatalog {
+  const source = asObject(payload);
+  return {
+    ...source,
+    items: asArray(source.items ?? payload)
+      .map((item) => normalizeManagedModelInfo(item))
+      .filter((item): item is ManagedModelInfo => Boolean(item)),
+  };
+}
+
+function normalizePluginCatalogTask(
+  item: unknown
+): PluginCatalogTask | null {
+  const source = asObject(item);
+  const id = asString(source.id);
+  if (!id) return null;
+  return {
+    id,
+    name: asString(source.name),
+    description: asString(source.description) || null,
+    entrypoint: asString(source.entrypoint),
+    scheduleKind: asString(source.scheduleKind ?? source.schedule_kind),
+    intervalSeconds: toNullableNumber(
+      source.intervalSeconds ?? source.interval_seconds
+    ),
+    enabled: asBoolean(source.enabled, true),
+  };
+}
+
+function normalizePluginCatalogEntry(
+  item: unknown
+): PluginCatalogEntry | null {
+  const source = asObject(item);
+  const id = asString(source.id);
+  if (!id) return null;
+  return {
+    id,
+    name: asString(source.name),
+    version: asString(source.version),
+    description: asString(source.description) || null,
+    author: asString(source.author) || null,
+    homepageUrl: asString(source.homepageUrl ?? source.homepage_url) || null,
+    scriptUrl: asString(source.scriptUrl ?? source.script_url) || null,
+    scriptBody: asString(source.scriptBody ?? source.script_body) || null,
+    permissions: asArray(source.permissions)
+      .map((value) => asString(value))
+      .filter(Boolean),
+    tasks: asArray(source.tasks)
+      .map((value) => normalizePluginCatalogTask(value))
+      .filter((value): value is PluginCatalogTask => Boolean(value)),
+    manifestVersion:
+      asString(source.manifestVersion ?? source.manifest_version) || "1.0.0",
+    category: asString(source.category) || null,
+    runtimeKind:
+      asString(source.runtimeKind ?? source.runtime_kind) || "lua",
+    tags: asArray(source.tags)
+      .map((value) => asString(value))
+      .filter(Boolean),
+    sourceUrl: asString(source.sourceUrl ?? source.source_url) || null,
+  };
+}
+
+export function normalizePluginCatalogResult(
+  payload: unknown
+): PluginCatalogResult {
+  const source = asObject(payload);
+  return {
+    sourceUrl: asString(source.sourceUrl ?? source.source_url),
+    items: asArray(source.items)
+      .map((item) => normalizePluginCatalogEntry(item))
+      .filter((item): item is PluginCatalogEntry => Boolean(item)),
+  };
+}
+
+function normalizeInstalledPluginSummary(
+  item: unknown
+): InstalledPluginSummary | null {
+  const source = asObject(item);
+  const pluginId = asString(source.pluginId ?? source.plugin_id);
+  if (!pluginId) return null;
+  return {
+    pluginId,
+    sourceUrl: asString(source.sourceUrl ?? source.source_url) || null,
+    name: asString(source.name),
+    version: asString(source.version),
+    description: asString(source.description) || null,
+    author: asString(source.author) || null,
+    homepageUrl: asString(source.homepageUrl ?? source.homepage_url) || null,
+    scriptUrl: asString(source.scriptUrl ?? source.script_url) || null,
+    permissions: asArray(source.permissions)
+      .map((value) => asString(value))
+      .filter(Boolean),
+    status: asString(source.status),
+    installedAt: asInteger(source.installedAt ?? source.installed_at, 0, 0),
+    updatedAt: asInteger(source.updatedAt ?? source.updated_at, 0, 0),
+    lastRunAt: toNullableNumber(source.lastRunAt ?? source.last_run_at),
+    lastError: asString(source.lastError ?? source.last_error) || null,
+    taskCount: asInteger(source.taskCount ?? source.task_count, 0, 0),
+    enabledTaskCount: asInteger(
+      source.enabledTaskCount ?? source.enabled_task_count,
+      0,
+      0
+    ),
+    manifestVersion:
+      asString(source.manifestVersion ?? source.manifest_version) || "1.0.0",
+    category: asString(source.category) || null,
+    runtimeKind:
+      asString(source.runtimeKind ?? source.runtime_kind) || "lua",
+    tags: asArray(source.tags)
+      .map((value) => asString(value))
+      .filter(Boolean),
+  };
+}
+
+export function normalizePluginInstalledList(
+  payload: unknown
+): InstalledPluginSummary[] {
+  const source = asObject(payload);
+  return asArray(source.items ?? payload)
+    .map((item) => normalizeInstalledPluginSummary(item))
+    .filter((item): item is InstalledPluginSummary => Boolean(item));
+}
+
+function normalizePluginTaskSummary(item: unknown): PluginTaskSummary | null {
+  const source = asObject(item);
+  const id = asString(source.id);
+  if (!id) return null;
+  return {
+    id,
+    pluginId: asString(source.pluginId ?? source.plugin_id),
+    pluginName: asString(source.pluginName ?? source.plugin_name),
+    name: asString(source.name),
+    description: asString(source.description) || null,
+    entrypoint: asString(source.entrypoint),
+    scheduleKind: asString(source.scheduleKind ?? source.schedule_kind),
+    intervalSeconds: toNullableNumber(
+      source.intervalSeconds ?? source.interval_seconds
+    ),
+    enabled: asBoolean(source.enabled, true),
+    nextRunAt: toNullableNumber(source.nextRunAt ?? source.next_run_at),
+    lastRunAt: toNullableNumber(source.lastRunAt ?? source.last_run_at),
+    lastStatus: asString(source.lastStatus ?? source.last_status) || null,
+    lastError: asString(source.lastError ?? source.last_error) || null,
+  };
+}
+
+export function normalizePluginTaskList(
+  payload: unknown
+): PluginTaskSummary[] {
+  const source = asObject(payload);
+  return asArray(source.items ?? payload)
+    .map((item) => normalizePluginTaskSummary(item))
+    .filter((item): item is PluginTaskSummary => Boolean(item));
+}
+
+function normalizePluginRunLogSummary(
+  item: unknown
+): PluginRunLogSummary | null {
+  const source = asObject(item);
+  const id = asInteger(source.id, -1, -1);
+  if (id < 0) return null;
+  return {
+    id,
+    pluginId: asString(source.pluginId ?? source.plugin_id),
+    pluginName: asString(source.pluginName ?? source.plugin_name) || null,
+    taskId: asString(source.taskId ?? source.task_id) || null,
+    taskName: asString(source.taskName ?? source.task_name) || null,
+    runType: asString(source.runType ?? source.run_type),
+    status: asString(source.status),
+    startedAt: asInteger(source.startedAt ?? source.started_at, 0, 0),
+    finishedAt: toNullableNumber(source.finishedAt ?? source.finished_at),
+    durationMs: toNullableNumber(source.durationMs ?? source.duration_ms),
+    output: source.output ?? null,
+    error: asString(source.error) || null,
+  };
+}
+
+export function normalizePluginRunLogList(
+  payload: unknown
+): PluginRunLogSummary[] {
+  const source = asObject(payload);
+  return asArray(source.items ?? payload)
+    .map((item) => normalizePluginRunLogSummary(item))
+    .filter((item): item is PluginRunLogSummary => Boolean(item));
+}
+
+export function formatRemainingDurationFromSeconds(
+  seconds: number | null | undefined,
+  emptyLabel = "未知"
+): string {
+  const value = toNullableNumber(seconds);
+  if (value == null) return emptyLabel;
+  const totalSeconds = Math.max(0, Math.floor(value));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (days > 0) return `${days}天${hours}小时`;
+  if (hours > 0) return `${hours}小时${minutes}分钟`;
+  return `${minutes}分钟`;
+}
+
+export function getExtraUsageDisplayRows(
+  _usage?: Partial<AccountUsage> | null
+): Array<{
+  id: string;
+  label: string;
+  labelValues?: Record<string, string | number>;
+  labelSuffix?: string | null;
+  remainPercent: number | null;
+  resetsAt: number | null;
+  windowLabel: string;
+  windowLabelValues?: Record<string, string | number>;
+}> {
+  return [];
+}
+
 export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Account | null {
   const source = asObject(item);
   const id = asString(source.id);
@@ -661,8 +1086,16 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     label: name,
     groupName,
     tags,
+    note: asString(source.note) || null,
     sort: asInteger(source.sort ?? source.priority, 0, 0),
     status,
+    planType:
+      asString(source.planType ?? source.plan_type ?? source.subscriptionPlanType) ||
+      null,
+    planTypeRaw:
+      asString(
+        source.planTypeRaw ?? source.plan_type_raw ?? source.subscription_plan_type
+      ) || null,
     healthScore,
     healthTier,
     lastStatusReason:
@@ -712,6 +1145,13 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     isAvailable: availability.level === "ok",
     isLowQuota,
     isDeactivated: status.toLowerCase() === "deactivated",
+    preferred: asBoolean(source.preferred, false),
+    hasSubscription:
+      typeof source.hasSubscription === "boolean"
+        ? source.hasSubscription
+        : typeof source.has_subscription === "boolean"
+          ? (source.has_subscription as boolean)
+          : null,
     lastRefreshAt: resolvedUsage?.capturedAt ?? null,
     availabilityText: availability.text,
     availabilityLevel: availability.level,
@@ -720,6 +1160,16 @@ export function normalizeAccount(item: unknown, usage?: AccountUsage | null): Ac
     subscriptionPlanType: asString(
       source.subscriptionPlanType ?? source.subscription_plan_type
     ) || null,
+    subscriptionPlan:
+      asString(source.subscriptionPlan ?? source.subscription_plan) || null,
+    subscriptionStatus:
+      asString(source.subscriptionStatus ?? source.subscription_status) || null,
+    subscriptionExpiresAt: toNullableNumber(
+      source.subscriptionExpiresAt ?? source.subscription_expires_at
+    ),
+    subscriptionRenewsAt: toNullableNumber(
+      source.subscriptionRenewsAt ?? source.subscription_renews_at
+    ),
     subscriptionUpdatedAt: toNullableNumber(
       source.subscriptionUpdatedAt ?? source.subscription_updated_at
     ),

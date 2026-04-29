@@ -2,15 +2,56 @@ use reqwest::header::HeaderValue;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+pub(crate) const MAX_TEXT_INPUT_CHARS: usize = 1_048_576;
+
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ParsedRequestMetadata {
     pub(crate) model: Option<String>,
     pub(crate) reasoning_effort: Option<String>,
+    pub(crate) service_tier: Option<String>,
     pub(crate) is_stream: bool,
+    pub(crate) stream_specified: bool,
     pub(crate) request_shape: Option<String>,
     pub(crate) has_prompt_cache_key: bool,
+    pub(crate) prompt_cache_key: Option<String>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ServiceTierLogDiagnostic {
+    pub(crate) has_field: bool,
+    pub(crate) raw_value: Option<String>,
+    pub(crate) normalized_value: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct InputSizeLimitError {
+    pub(crate) actual_chars: usize,
+    pub(crate) max_chars: usize,
+}
+
+impl InputSizeLimitError {
+    pub(crate) fn message(&self) -> String {
+        crate::gateway::bilingual_error(
+            format!("输入超过最大长度 {} 个字符", self.max_chars),
+            format!(
+                "Input exceeds the maximum length of {} characters.",
+                self.max_chars
+            ),
+        )
+    }
+}
+
+/// 函数 `parse_request_metadata`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn parse_request_metadata(body: &[u8]) -> ParsedRequestMetadata {
     if body.is_empty() {
         return ParsedRequestMetadata::default();
@@ -51,19 +92,191 @@ pub(crate) fn parse_request_metadata(body: &[u8]) -> ParsedRequestMetadata {
         .and_then(Value::as_str)
         .map(str::trim)
         .is_some_and(|v| !v.is_empty());
+    let prompt_cache_key = value
+        .get("prompt_cache_key")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(|v| v.to_string());
+    let service_tier = inspect_service_tier_value(value.get("service_tier")).normalized_value;
 
     ParsedRequestMetadata {
         model,
         reasoning_effort,
+        service_tier,
         is_stream: value
             .get("stream")
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        stream_specified: object.contains_key("stream"),
         request_shape,
         has_prompt_cache_key,
+        prompt_cache_key,
     }
 }
 
+pub(crate) fn inspect_service_tier_for_log(body: &[u8]) -> ServiceTierLogDiagnostic {
+    if body.is_empty() {
+        return ServiceTierLogDiagnostic::default();
+    }
+    let Ok(value) = serde_json::from_slice::<Value>(body) else {
+        return ServiceTierLogDiagnostic::default();
+    };
+    inspect_service_tier_value(value.get("service_tier"))
+}
+
+pub(crate) fn validate_text_input_limit_for_path(
+    path: &str,
+    body: &[u8],
+) -> Result<(), InputSizeLimitError> {
+    if body.is_empty() || !is_text_input_limit_path(path) {
+        return Ok(());
+    }
+    let Ok(value) = serde_json::from_slice::<Value>(body) else {
+        return Ok(());
+    };
+    let actual_chars = count_path_text_input_chars(path, &value);
+    if actual_chars > MAX_TEXT_INPUT_CHARS {
+        return Err(InputSizeLimitError {
+            actual_chars,
+            max_chars: MAX_TEXT_INPUT_CHARS,
+        });
+    }
+    Ok(())
+}
+
+fn is_text_input_limit_path(path: &str) -> bool {
+    path.starts_with("/v1/responses")
+        || path.starts_with("/v1/chat/completions")
+        || path.starts_with("/v1/messages")
+}
+
+fn count_path_text_input_chars(path: &str, value: &Value) -> usize {
+    let Some(object) = value.as_object() else {
+        return 0;
+    };
+    let mut total = 0;
+    if let Some(instructions) = object.get("instructions") {
+        total += count_stringish_chars(instructions);
+    }
+    if path.starts_with("/v1/responses") {
+        if let Some(input) = object.get("input") {
+            total += count_response_input_chars(input);
+        }
+        return total;
+    }
+    if path.starts_with("/v1/chat/completions") || path.starts_with("/v1/messages") {
+        if let Some(messages) = object.get("messages") {
+            total += count_message_list_chars(messages);
+        }
+        return total;
+    }
+    total
+}
+
+fn count_response_input_chars(value: &Value) -> usize {
+    match value {
+        Value::String(text) => text.chars().count(),
+        Value::Array(items) => items.iter().map(count_response_input_chars).sum(),
+        Value::Object(object) => {
+            let mut total = 0;
+            if let Some(text) = object.get("text") {
+                total += count_stringish_chars(text);
+            }
+            if let Some(input_text) = object.get("input_text") {
+                total += count_stringish_chars(input_text);
+            }
+            if let Some(content) = object.get("content") {
+                total += count_response_input_chars(content);
+            }
+            if let Some(input) = object.get("input") {
+                total += count_response_input_chars(input);
+            }
+            total
+        }
+        _ => 0,
+    }
+}
+
+fn count_message_list_chars(value: &Value) -> usize {
+    match value {
+        Value::Array(items) => items.iter().map(count_message_list_chars).sum(),
+        Value::Object(object) => object
+            .get("content")
+            .map(count_message_content_chars)
+            .unwrap_or(0),
+        _ => 0,
+    }
+}
+
+fn count_message_content_chars(value: &Value) -> usize {
+    match value {
+        Value::String(text) => text.chars().count(),
+        Value::Array(items) => items.iter().map(count_message_content_chars).sum(),
+        Value::Object(object) => {
+            let mut total = 0;
+            if let Some(text) = object.get("text") {
+                total += count_stringish_chars(text);
+            }
+            if let Some(content) = object.get("content") {
+                total += count_message_content_chars(content);
+            }
+            total
+        }
+        _ => 0,
+    }
+}
+
+fn count_stringish_chars(value: &Value) -> usize {
+    match value {
+        Value::String(text) => text.chars().count(),
+        Value::Array(items) => items.iter().map(count_stringish_chars).sum(),
+        Value::Object(object) => {
+            let mut total = 0;
+            if let Some(text) = object.get("text") {
+                total += count_stringish_chars(text);
+            }
+            if let Some(content) = object.get("content") {
+                total += count_stringish_chars(content);
+            }
+            total
+        }
+        _ => 0,
+    }
+}
+
+pub(crate) fn inspect_service_tier_value(value: Option<&Value>) -> ServiceTierLogDiagnostic {
+    let Some(value) = value else {
+        return ServiceTierLogDiagnostic::default();
+    };
+
+    let raw_value = Some(match value {
+        Value::String(text) => text.clone(),
+        other => serde_json::to_string(other).unwrap_or_else(|_| "<serialize_failed>".to_string()),
+    });
+    let normalized_value = value
+        .as_str()
+        .and_then(crate::apikey::service_tier::normalize_service_tier_for_log)
+        .map(str::to_string);
+
+    ServiceTierLogDiagnostic {
+        has_field: true,
+        raw_value,
+        normalized_value,
+    }
+}
+
+/// 函数 `summarize_request_shape_from_object`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - object: 参数 object
+///
+/// # 返回
+/// 返回函数执行结果
 fn summarize_request_shape_from_object(object: &serde_json::Map<String, Value>) -> String {
     let mut keys = object.keys().cloned().collect::<Vec<_>>();
     keys.sort_unstable();
@@ -116,11 +329,23 @@ fn summarize_request_shape_from_object(object: &serde_json::Map<String, Value>) 
     format!("fp={fingerprint};{shape}")
 }
 
+/// 函数 `should_drop_incoming_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 pub(crate) fn should_drop_incoming_header(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     name.eq_ignore_ascii_case("Authorization")
         || name.eq_ignore_ascii_case("x-api-key")
+        || name.eq_ignore_ascii_case("x-goog-api-key")
         || name.eq_ignore_ascii_case("Host")
         || name.eq_ignore_ascii_case("Content-Length")
         // 中文注释：Claude SDK/CLI 会附带 anthropic/x-stainless 指纹头；
@@ -131,6 +356,17 @@ pub(crate) fn should_drop_incoming_header(name: &str) -> bool {
         || name.eq_ignore_ascii_case("ChatGPT-Account-Id")
 }
 
+/// 函数 `should_drop_session_affinity_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 pub(crate) fn should_drop_session_affinity_header(name: &str) -> bool {
     // 中文注释：session_id / turn-state 属于会话粘性信号，正常直连时应保留；
@@ -138,11 +374,33 @@ pub(crate) fn should_drop_session_affinity_header(name: &str) -> bool {
     name.eq_ignore_ascii_case("session_id") || name.eq_ignore_ascii_case("x-codex-turn-state")
 }
 
+/// 函数 `should_drop_incoming_header_for_failover`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 #[cfg(test)]
 pub(crate) fn should_drop_incoming_header_for_failover(name: &str) -> bool {
     should_drop_incoming_header(name) || should_drop_session_affinity_header(name)
 }
 
+/// 函数 `is_upstream_challenge_response`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn is_upstream_challenge_response(
     status_code: u16,
     content_type: Option<&HeaderValue>,
@@ -157,10 +415,32 @@ pub(crate) fn is_upstream_challenge_response(
     is_html
 }
 
+/// 函数 `is_html_content_type`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn is_html_content_type(value: &str) -> bool {
     value.trim().to_ascii_lowercase().starts_with("text/html")
 }
 
+/// 函数 `normalize_models_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn normalize_models_path(path: &str) -> String {
     let is_models_path = path == "/v1/models" || path.starts_with("/v1/models?");
     if !is_models_path {
@@ -168,3 +448,7 @@ pub(crate) fn normalize_models_path(path: &str) -> String {
     }
     path.to_string()
 }
+
+#[cfg(test)]
+#[path = "tests/request_helpers_tests.rs"]
+mod tests;

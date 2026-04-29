@@ -29,8 +29,11 @@ export interface Account {
   label: string;
   groupName: string;
   tags: string[];
+  note?: string | null;
   sort: number;
   status: string;
+  planType?: string | null;
+  planTypeRaw?: string | null;
   healthScore: number;
   healthTier: AccountHealthTier;
   lastStatusReason: string | null;
@@ -51,12 +54,18 @@ export interface Account {
   isAvailable: boolean;
   isLowQuota: boolean;
   isDeactivated: boolean;
+  preferred: boolean;
+  hasSubscription?: boolean | null;
   lastRefreshAt: number | null;
   availabilityText: string;
   availabilityLevel: AvailabilityLevel;
   primaryRemainPercent: number | null;
   secondaryRemainPercent: number | null;
   subscriptionPlanType: string | null;
+  subscriptionPlan?: string | null;
+  subscriptionStatus?: string | null;
+  subscriptionExpiresAt?: number | null;
+  subscriptionRenewsAt?: number | null;
   subscriptionUpdatedAt: number | null;
   teamManagerUploadedAt: number | null;
   officialPromoLink: string | null;
@@ -256,6 +265,45 @@ export interface ApiKey {
 export interface ApiKeyCreateResult {
   id: string;
   key: string;
+}
+
+export interface AggregateApi {
+  id: string;
+  providerType: string;
+  supplierName: string | null;
+  sort: number;
+  url: string;
+  authType: string;
+  authParams: Record<string, unknown> | null;
+  action: string | null;
+  status: string;
+  createdAt: number | null;
+  updatedAt: number | null;
+  lastTestAt: number | null;
+  lastTestStatus: string | null;
+  lastTestError: string | null;
+}
+
+export interface AggregateApiCreateResult {
+  id: string;
+  key: string;
+}
+
+export interface AggregateApiSecretResult {
+  id: string;
+  key: string;
+  authType: string;
+  username: string | null;
+  password: string | null;
+}
+
+export interface AggregateApiTestResult {
+  id: string;
+  ok: boolean;
+  statusCode: number | null;
+  message: string | null;
+  testedAt: number;
+  latencyMs: number;
 }
 
 export interface ApiKeyUsageStat {
@@ -726,6 +774,10 @@ export interface CurrentAccessTokenAccount {
   email: string;
   planType: string;
   planTypeRaw?: string | null;
+  hasSubscription?: boolean | null;
+  subscriptionPlan?: string | null;
+  subscriptionExpiresAt?: number | null;
+  subscriptionRenewsAt?: number | null;
   chatgptAccountId: string | null;
   workspaceId: string | null;
   status: string;
@@ -733,7 +785,7 @@ export interface CurrentAccessTokenAccount {
 
 export interface CurrentAccessTokenAccountReadResult {
   account: CurrentAccessTokenAccount | null;
-  authMode: string | null;
+  authMode?: string | null;
   requiresOpenaiAuth: boolean;
 }
 
@@ -743,6 +795,10 @@ export interface ChatgptAuthTokensRefreshResult {
   chatgptAccountId: string;
   chatgptPlanType: string | null;
   chatgptPlanTypeRaw?: string | null;
+  hasSubscription?: boolean | null;
+  subscriptionPlan?: string | null;
+  subscriptionExpiresAt?: number | null;
+  subscriptionRenewsAt?: number | null;
 }
 
 export interface RegisterServiceItem {
@@ -1112,6 +1168,9 @@ export interface EnvOverrideCatalogItem {
   defaultValue: string;
   scope: string;
   applyMode: string;
+  riskLevel?: string;
+  effectScope?: string;
+  safetyNote?: string;
 }
 
 export interface BackgroundTaskSettings {
@@ -1180,9 +1239,12 @@ export interface AppSettings {
   closeToTraySupported: boolean;
   lowTransparency: boolean;
   lightweightModeOnCloseToTray: boolean;
+  codexCliGuideDismissed?: boolean;
   webAccessPasswordConfigured: boolean;
   webAccessTwoFactorEnabled: boolean;
   webAccessRecoveryCodesRemaining: number;
+  locale?: string;
+  localeOptions?: string[];
   remoteManagementEnabled: boolean;
   remoteManagementSecretConfigured: boolean;
   remoteManagementSecret?: string;
@@ -1201,6 +1263,8 @@ export interface AppSettings {
   requestCompressionEnabled: boolean;
   payloadRewriteRulesJson: string;
   modelAliasPoolsJson: string;
+  modelForwardRules?: string;
+  accountMaxInflight?: number;
   retryPolicyMaxRetries: number;
   retryPolicyBackoffStrategy: string;
   retryPolicyRetryableStatusCodes: number[];
@@ -1208,11 +1272,15 @@ export interface AppSettings {
   responseCacheTtlSecs: number;
   responseCacheMaxEntries: number;
   gatewayOriginator: string;
+  gatewayOriginatorDefault?: string;
+  gatewayUserAgentVersion?: string;
+  gatewayUserAgentVersionDefault?: string;
   gatewayResidencyRequirement: string;
   gatewayResidencyRequirementOptions: string[];
   cpaNoCookieHeaderModeEnabled: boolean;
   upstreamProxyUrl: string;
   upstreamStreamTimeoutMs: number;
+  upstreamTotalTimeoutMs?: number;
   sseKeepaliveIntervalMs: number;
   teamManagerEnabled: boolean;
   teamManagerApiUrl: string;
@@ -1232,6 +1300,8 @@ export interface AppSettings {
   theme: string;
   appearancePreset: string;
   visibleMenuItems: string[];
+  pluginMarketMode?: string | null;
+  pluginMarketSourceUrl?: string | null;
   [key: string]: unknown;
 }
 
@@ -1274,9 +1344,12 @@ export interface GatewayResponseCacheStats {
 }
 
 export interface ServiceInitializationResult {
+  userAgent: string;
+  codexHome: string;
+  platformFamily: string;
+  platformOs: string;
   serverName: string;
   version: string;
-  userAgent: string;
 }
 
 export interface StartupSnapshot {
@@ -1294,3 +1367,7 @@ export interface StartupSnapshot {
   recentRequestLogCount: number;
   latestRequestAccountId: string | null;
 }
+
+export * from "./model";
+export * from "./plugin";
+export * from "./runtime";

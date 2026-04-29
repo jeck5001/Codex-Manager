@@ -1,10 +1,32 @@
 use rand::Rng;
 use std::time::{Duration, Instant};
 
+/// 函数 `as_millis_u64`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - duration: 参数 duration
+///
+/// # 返回
+/// 返回函数执行结果
 fn as_millis_u64(duration: Duration) -> u64 {
     duration.as_millis().min(u64::MAX as u128) as u64
 }
 
+/// 函数 `exponential_jitter_delay`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn exponential_jitter_delay(
     base: Duration,
     cap: Duration,
@@ -21,6 +43,17 @@ pub(in super::super) fn exponential_jitter_delay(
     Duration::from_millis(jitter_ms)
 }
 
+/// 函数 `sleep_with_exponential_jitter`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn sleep_with_exponential_jitter(
     base: Duration,
     cap: Duration,

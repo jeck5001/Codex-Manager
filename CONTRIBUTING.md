@@ -1,18 +1,25 @@
 # CONTRIBUTING
 
+默认语言：简体中文
+
+其他语言入口：
+
+- English: [docs/en/CONTRIBUTING.md](docs/en/CONTRIBUTING.md)
+- Русский: [docs/ru/Руководство-для-участников.md](docs/ru/Руководство-для-участников.md)
+- 한국어: [docs/ko/기여-가이드.md](docs/ko/기여-가이드.md)
+
 本文档用于约束 CodexManager 的日常协作方式，目标是让新协作者能在尽量少的口头交接下完成开发、验证、提交和发版。
 
 ## 1. 项目定位
 
-CodexManager 不是单一前端项目，也不是单一 Rust 服务项目。
-当前仓库同时包含：
+CodexManager 不是单一前端项目，也不是单一 Rust 服务项目。当前仓库同时包含：
 
 - 桌面端：`apps/` + `apps/src-tauri/`
 - 本地服务：`crates/service`
 - Web 壳：`crates/web`
 - Service 启动器：`crates/start`
 - 数据与存储底座：`crates/core`
-- 构建/发版脚本：`scripts/`
+- 构建 / 发版脚本：`scripts/`
 - GitHub Actions 发布链路：`.github/workflows/`
 
 因此提交前必须先判断你改动属于哪个边界，避免把多个职责直接堆进同一个文件。
@@ -190,7 +197,7 @@ PR 至少写清：
 每次发版前必须确认：
 
 1. `CHANGELOG.md` 已更新。
-2. `README.md` 与 `README.en.md` 当前版本入口一致。
+2. `README.md` 与 `docs/en/README.md` 当前版本入口一致。
 3. 根 `Cargo.toml`、`apps/src-tauri/Cargo.toml`、`apps/src-tauri/tauri.conf.json` 版本一致。
 4. release workflow 输入说明、脚本参数说明、实际 workflow 保持一致。
 5. 高风险兼容路径至少完成一轮本地验证。
@@ -200,7 +207,7 @@ PR 至少写清：
 
 长期维护约定如下：
 
-- `README.md` / `README.en.md` 负责项目介绍、快速开始、入口说明。
+- `README.md` / `docs/en/README.md` 负责项目介绍、快速开始、入口说明。
 - `CHANGELOG.md` 负责版本历史。
 - `ARCHITECTURE.md` 负责结构边界与运行关系。
 - `CONTRIBUTING.md` 负责协作规则与提交前检查。

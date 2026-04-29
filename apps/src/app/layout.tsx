@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { PageKeepAliveViewport } from "@/components/layout/page-keep-alive-viewport";
+import { RouteTransitionOverlay } from "@/components/layout/route-transition-overlay";
 import { Providers } from "@/components/providers";
 import { AppBootstrap } from "@/components/layout/app-bootstrap";
 import {
@@ -33,7 +35,10 @@ export default function RootLayout({
               <Sidebar />
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
                 <Header />
-                <main className="min-w-0 flex-1 overflow-y-auto p-6 no-scrollbar">{children}</main>
+                <main className="relative min-w-0 flex-1 overflow-y-auto p-6 no-scrollbar">
+                  <RouteTransitionOverlay />
+                  <PageKeepAliveViewport initialChildren={children} />
+                </main>
               </div>
             </div>
           </AppBootstrap>

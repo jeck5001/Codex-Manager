@@ -2,6 +2,18 @@ use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 
 use super::state::current_unsaved_settings_draft_sections;
 
+/// 函数 `format_unsaved_settings_discard_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - sections: 参数 sections
+/// - action_label: 参数 action_label
+///
+/// # 返回
+/// 返回函数执行结果
 fn format_unsaved_settings_discard_message(
     sections: &[String],
     action_label: &str,
@@ -18,6 +30,17 @@ fn format_unsaved_settings_discard_message(
     ))
 }
 
+/// 函数 `confirm_discard_unsaved_settings`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - action_label: 参数 action_label
+///
+/// # 返回
+/// 返回函数执行结果
 fn confirm_discard_unsaved_settings(action_label: &str) -> bool {
     let sections = current_unsaved_settings_draft_sections();
     let Some(message) = format_unsaved_settings_discard_message(&sections, action_label) else {
@@ -35,10 +58,32 @@ fn confirm_discard_unsaved_settings(action_label: &str) -> bool {
     )
 }
 
+/// 函数 `confirm_discard_unsaved_settings_for_window_close`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn confirm_discard_unsaved_settings_for_window_close() -> bool {
     confirm_discard_unsaved_settings("关闭窗口")
 }
 
+/// 函数 `confirm_discard_unsaved_settings_for_app_exit`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn confirm_discard_unsaved_settings_for_app_exit() -> bool {
     confirm_discard_unsaved_settings("退出应用")
 }
@@ -47,11 +92,33 @@ pub(crate) fn confirm_discard_unsaved_settings_for_app_exit() -> bool {
 mod tests {
     use super::format_unsaved_settings_discard_message;
 
+    /// 函数 `omits_prompt_when_no_unsaved_sections`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn omits_prompt_when_no_unsaved_sections() {
         assert!(format_unsaved_settings_discard_message(&[], "关闭窗口").is_none());
     }
 
+    /// 函数 `formats_unsaved_sections_prompt_with_action`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn formats_unsaved_sections_prompt_with_action() {
         let message = format_unsaved_settings_discard_message(

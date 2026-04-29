@@ -5,6 +5,17 @@ use reqwest::blocking::Client;
 use super::model::{GitHubAsset, GitHubRelease};
 use super::runtime::{normalize_version, resolve_github_token, USER_AGENT};
 
+/// 函数 `extract_tag_from_release_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - url: 参数 url
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_tag_from_release_url(url: &str) -> Option<String> {
     let marker = "/releases/tag/";
     let (_, tail) = url.split_once(marker)?;
@@ -20,6 +31,18 @@ fn extract_tag_from_release_url(url: &str) -> Option<String> {
     }
 }
 
+/// 函数 `normalize_release_asset_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+/// - repo: 参数 repo
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_release_asset_url(raw: &str, repo: &str) -> Option<String> {
     let href = raw.trim().replace("&amp;", "&");
     if href.is_empty() {
@@ -46,6 +69,17 @@ fn normalize_release_asset_url(raw: &str, repo: &str) -> Option<String> {
     }
 }
 
+/// 函数 `asset_name_from_download_url`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - url: 参数 url
+///
+/// # 返回
+/// 返回函数执行结果
 fn asset_name_from_download_url(url: &str) -> Option<String> {
     let without_fragment = url.split('#').next().unwrap_or(url);
     let without_query = without_fragment
@@ -60,6 +94,18 @@ fn asset_name_from_download_url(url: &str) -> Option<String> {
     }
 }
 
+/// 函数 `parse_release_assets_from_html`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - html: 参数 html
+/// - repo: 参数 repo
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_release_assets_from_html(html: &str, repo: &str) -> Vec<GitHubAsset> {
     let mut assets = Vec::new();
     let mut seen = HashSet::new();
@@ -90,6 +136,19 @@ fn parse_release_assets_from_html(html: &str, repo: &str) -> Vec<GitHubAsset> {
     assets
 }
 
+/// 函数 `fetch_release_assets_from_expanded_fragment`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - client: 参数 client
+/// - repo: 参数 repo
+/// - tag: 参数 tag
+///
+/// # 返回
+/// 返回函数执行结果
 fn fetch_release_assets_from_expanded_fragment(
     client: &Client,
     repo: &str,
@@ -109,6 +168,18 @@ fn fetch_release_assets_from_expanded_fragment(
     Ok(parse_release_assets_from_html(&html, repo))
 }
 
+/// 函数 `fetch_latest_release_via_html`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - client: 参数 client
+/// - repo: 参数 repo
+///
+/// # 返回
+/// 返回函数执行结果
 fn fetch_latest_release_via_html(client: &Client, repo: &str) -> Result<GitHubRelease, String> {
     let url = format!("https://github.com/{repo}/releases/latest");
     let response = client
@@ -146,6 +217,18 @@ fn fetch_latest_release_via_html(client: &Client, repo: &str) -> Result<GitHubRe
     })
 }
 
+/// 函数 `select_release_for_channel`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - releases: 参数 releases
+/// - include_prerelease: 参数 include_prerelease
+///
+/// # 返回
+/// 返回函数执行结果
 fn select_release_for_channel(
     releases: Vec<GitHubRelease>,
     include_prerelease: bool,
@@ -180,6 +263,17 @@ fn select_release_for_channel(
     })
 }
 
+/// 函数 `fetch_latest_release`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn fetch_latest_release(
     client: &Client,
     repo: &str,
@@ -242,6 +336,17 @@ mod tests {
     };
     use crate::commands::updater::model::GitHubRelease;
 
+    /// 函数 `release_selection_respects_channel`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn release_selection_respects_channel() {
         let releases = vec![
@@ -270,6 +375,17 @@ mod tests {
         assert_eq!(prerelease.tag_name, "v0.1.9-beta.1");
     }
 
+    /// 函数 `parse_release_assets_filters_repo_and_deduplicates`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn parse_release_assets_filters_repo_and_deduplicates() {
         let html = r#"
@@ -283,6 +399,17 @@ mod tests {
         assert_eq!(assets[0].name, "CodexManager.exe");
     }
 
+    /// 函数 `release_asset_url_requires_target_repo`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn release_asset_url_requires_target_repo() {
         assert!(normalize_release_asset_url(

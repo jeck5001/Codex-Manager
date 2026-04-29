@@ -2,6 +2,19 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * 函数 `Card`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function Card({
   className,
   size = "default",
@@ -20,6 +33,19 @@ function Card({
   )
 }
 
+/**
+ * 函数 `CardHeader`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -33,6 +59,19 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/**
+ * 函数 `CardTitle`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -46,6 +85,19 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/**
+ * 函数 `CardDescription`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -56,6 +108,19 @@ function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/**
+ * 函数 `CardAction`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function CardAction({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -69,6 +134,19 @@ function CardAction({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/**
+ * 函数 `CardContent`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -79,6 +157,19 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/**
+ * 函数 `CardFooter`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div

@@ -1,6 +1,17 @@
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
+/// 函数 `normalize_env_override_key`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn normalize_env_override_key(raw: &str) -> Result<String, String> {
     let normalized = raw.trim().to_ascii_uppercase();
     if normalized.is_empty() {
@@ -28,16 +39,49 @@ pub(super) fn normalize_env_override_key(raw: &str) -> Result<String, String> {
     Ok(normalized)
 }
 
+/// 函数 `normalize_env_override_patch_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn normalize_env_override_patch_value(raw: Option<&str>) -> Option<String> {
     raw.map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
 }
 
+/// 函数 `normalize_saved_env_override_text`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn normalize_saved_env_override_text(raw: &str) -> String {
     raw.trim().to_string()
 }
 
+/// 函数 `normalize_env_overrides_patch`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn normalize_env_overrides_patch(
     overrides: HashMap<String, String>,
 ) -> Result<BTreeMap<String, Option<String>>, String> {
@@ -49,6 +93,17 @@ pub(super) fn normalize_env_overrides_patch(
     Ok(normalized)
 }
 
+/// 函数 `parse_saved_env_override_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn parse_saved_env_override_value(value: &Value) -> Option<String> {
     match value {
         Value::String(text) => Some(normalize_saved_env_override_text(text)),

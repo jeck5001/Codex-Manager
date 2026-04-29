@@ -1,3 +1,14 @@
+/// 函数 `normalize_reasoning_effort`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn normalize_reasoning_effort(value: &str) -> Option<&'static str> {
     match value.trim().to_ascii_lowercase().as_str() {
         "low" => Some("low"),
@@ -10,6 +21,17 @@ pub(crate) fn normalize_reasoning_effort(value: &str) -> Option<&'static str> {
     }
 }
 
+/// 函数 `normalize_reasoning_effort_owned`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn normalize_reasoning_effort_owned(value: Option<String>) -> Option<String> {
     value
         .as_deref()

@@ -4,6 +4,19 @@ import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * 函数 `TooltipProvider`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function TooltipProvider({
   delay = 0,
   ...props
@@ -17,14 +30,53 @@ function TooltipProvider({
   )
 }
 
+/**
+ * 函数 `Tooltip`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
   return <TooltipPrimitive.Root data-slot="tooltip" {...props} />
 }
 
+/**
+ * 函数 `TooltipTrigger`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function TooltipTrigger({ ...props }: TooltipPrimitive.Trigger.Props) {
   return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
 }
 
+/**
+ * 函数 `TooltipContent`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function TooltipContent({
   className,
   side = "top",

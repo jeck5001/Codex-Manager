@@ -55,6 +55,35 @@ export function formatTsFromSeconds(
   return dateTimeFormatter.format(date);
 }
 
+export function formatRemainingDurationFromSeconds(
+  timestamp: number | null | undefined,
+  modeOrEmptyLabel?: "hours" | "days" | string,
+  maybeEmptyLabel?: string
+): string {
+  const value = toNullableNumber(timestamp);
+  const mode =
+    modeOrEmptyLabel === "hours" || modeOrEmptyLabel === "days"
+      ? modeOrEmptyLabel
+      : null;
+  const emptyLabel =
+    mode != null ? maybeEmptyLabel ?? "未知" : modeOrEmptyLabel ?? "未知";
+  if (value == null) return emptyLabel;
+  const totalSeconds = Math.max(0, Math.floor(value - Date.now() / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (mode === "hours") {
+    const totalHours = Math.max(0, Math.floor(totalSeconds / 3600));
+    return `${totalHours}小时`;
+  }
+  if (mode === "days") {
+    return days > 0 ? `${days}天` : `${Math.max(1, hours)}小时`;
+  }
+  if (days > 0) return `${days}天${hours}小时`;
+  if (hours > 0) return `${hours}小时${minutes}分钟`;
+  return `${minutes}分钟`;
+}
+
 function trimTrailingZeros(text: string): string {
   return text.replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
 }
@@ -219,6 +248,21 @@ export function getUsageDisplayBuckets(usage?: Partial<AccountUsage> | null): {
     secondaryRemainPercent: remainingPercent(usage?.secondaryUsedPercent),
     secondaryResetsAt: toNullableNumber(usage?.secondaryResetsAt),
   };
+}
+
+export function getExtraUsageDisplayRows(
+  _usage?: Partial<AccountUsage> | null
+): Array<{
+  id: string;
+  label: string;
+  labelValues?: Record<string, string | number>;
+  labelSuffix?: string | null;
+  remainPercent: number | null;
+  resetsAt: number | null;
+  windowLabel: string;
+  windowLabelValues?: Record<string, string | number>;
+}> {
+  return [];
 }
 
 export function calcAvailability(

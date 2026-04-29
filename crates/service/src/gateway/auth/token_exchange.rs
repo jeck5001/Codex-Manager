@@ -1,14 +1,16 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
+use codexmanager_core::auth::extract_token_exp;
 use codexmanager_core::storage::{now_ts, Account, Storage, Token};
 
-use crate::account_status::mark_account_unavailable_for_refresh_token_error;
+use crate::account_status::mark_account_unavailable_for_auth_error;
 use crate::auth_tokens;
 use crate::usage_http::refresh_access_token;
 
 const ACCOUNT_TOKEN_EXCHANGE_LOCK_TTL_SECS: i64 = 30 * 60;
 const ACCOUNT_TOKEN_EXCHANGE_LOCK_CLEANUP_INTERVAL_SECS: i64 = 60;
+const API_KEY_ACCESS_TOKEN_REFRESH_AHEAD_SECS: i64 = 60;
 
 struct AccountTokenExchangeLockEntry {
     lock: Arc<Mutex<()>>,
@@ -24,6 +26,17 @@ struct AccountTokenExchangeLockTable {
 static ACCOUNT_TOKEN_EXCHANGE_LOCKS: OnceLock<Mutex<AccountTokenExchangeLockTable>> =
     OnceLock::new();
 
+/// 函数 `account_token_exchange_lock`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn account_token_exchange_lock(account_id: &str) -> Arc<Mutex<()>> {
     let lock = ACCOUNT_TOKEN_EXCHANGE_LOCKS
         .get_or_init(|| Mutex::new(AccountTokenExchangeLockTable::default()));
@@ -41,6 +54,18 @@ pub(super) fn account_token_exchange_lock(account_id: &str) -> Arc<Mutex<()>> {
     entry.lock.clone()
 }
 
+/// 函数 `maybe_cleanup_exchange_locks`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - table: 参数 table
+/// - now: 参数 now
+///
+/// # 返回
+/// 无
 fn maybe_cleanup_exchange_locks(table: &mut AccountTokenExchangeLockTable, now: i64) {
     if table.last_cleanup_at != 0
         && now.saturating_sub(table.last_cleanup_at)
@@ -55,15 +80,57 @@ fn maybe_cleanup_exchange_locks(table: &mut AccountTokenExchangeLockTable, now: 
     });
 }
 
+/// 函数 `find_cached_api_key_access_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - account_id: 参数 account_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn find_cached_api_key_access_token(storage: &Storage, account_id: &str) -> Option<String> {
     storage
         .find_token_by_account_id(account_id)
         .ok()?
         .and_then(|t| t.api_key_access_token)
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
+        .and_then(|value| usable_api_key_access_token(&value))
 }
 
+fn usable_api_key_access_token(value: &str) -> Option<String> {
+    let token = value.trim();
+    if token.is_empty() {
+        return None;
+    }
+    if access_token_expires_within(token, API_KEY_ACCESS_TOKEN_REFRESH_AHEAD_SECS) {
+        return None;
+    }
+    Some(token.to_string())
+}
+
+fn access_token_expires_within(token: &str, ahead_secs: i64) -> bool {
+    extract_token_exp(token)
+        .map(|exp| exp <= now_ts().saturating_add(ahead_secs))
+        .unwrap_or(false)
+}
+
+/// 函数 `exchange_and_persist_api_key_access_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - token: 参数 token
+/// - issuer: 参数 issuer
+/// - client_id: 参数 client_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn exchange_and_persist_api_key_access_token(
     storage: &Storage,
     token: &mut Token,
@@ -76,6 +143,18 @@ fn exchange_and_persist_api_key_access_token(
     Ok(exchanged)
 }
 
+/// 函数 `fallback_to_access_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - token: 参数 token
+/// - exchange_error: 参数 exchange_error
+///
+/// # 返回
+/// 返回函数执行结果
 fn fallback_to_access_token(token: &Token, exchange_error: &str) -> Result<String, String> {
     let fallback = token.access_token.trim();
     if fallback.is_empty() {
@@ -88,6 +167,31 @@ fn fallback_to_access_token(token: &Token, exchange_error: &str) -> Result<Strin
     Ok(fallback.to_string())
 }
 
+fn should_mark_account_unavailable_after_refresh_failure_for_bearer_exchange(
+    token: &Token,
+) -> bool {
+    let fallback = token.access_token.trim();
+    if fallback.is_empty() {
+        return true;
+    }
+
+    match extract_token_exp(fallback) {
+        Some(exp) => exp <= now_ts(),
+        None => false,
+    }
+}
+
+/// 函数 `resolve_openai_bearer_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn resolve_openai_bearer_token(
     storage: &Storage,
     account: &Account,
@@ -96,10 +200,9 @@ pub(super) fn resolve_openai_bearer_token(
     if let Some(existing) = token
         .api_key_access_token
         .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
+        .and_then(usable_api_key_access_token)
     {
-        return Ok(existing.to_string());
+        return Ok(existing);
     }
 
     let exchange_lock = account_token_exchange_lock(&account.id);
@@ -109,10 +212,9 @@ pub(super) fn resolve_openai_bearer_token(
     if let Some(existing) = token
         .api_key_access_token
         .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
+        .and_then(usable_api_key_access_token)
     {
-        return Ok(existing.to_string());
+        return Ok(existing);
     }
 
     if let Some(cached) = find_cached_api_key_access_token(storage, &account.id) {
@@ -153,7 +255,9 @@ pub(super) fn resolve_openai_bearer_token(
                         }
                     }
                     Err(refresh_err) => {
-                        if mark_account_unavailable_for_refresh_token_error(
+                        if should_mark_account_unavailable_after_refresh_failure_for_bearer_exchange(
+                            token,
+                        ) && mark_account_unavailable_for_auth_error(
                             storage,
                             &account.id,
                             &refresh_err,
@@ -173,6 +277,17 @@ pub(super) fn resolve_openai_bearer_token(
     }
 }
 
+/// 函数 `clear_account_token_exchange_locks_for_tests`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[cfg(test)]
 fn clear_account_token_exchange_locks_for_tests() {
     let lock = ACCOUNT_TOKEN_EXCHANGE_LOCKS
@@ -181,15 +296,6 @@ fn clear_account_token_exchange_locks_for_tests() {
         table.entries.clear();
         table.last_cleanup_at = 0;
     }
-}
-
-#[cfg(test)]
-fn token_exchange_test_guard() -> std::sync::MutexGuard<'static, ()> {
-    static TOKEN_EXCHANGE_TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-    TOKEN_EXCHANGE_TEST_MUTEX
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("token exchange test mutex")
 }
 
 #[cfg(test)]

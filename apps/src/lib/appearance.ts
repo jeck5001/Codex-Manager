@@ -15,12 +15,38 @@ export const APPEARANCE_PRESETS = [
   },
 ] as const;
 
+/**
+ * 函数 `normalizeAppearancePreset`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeAppearancePreset(
   value: string | null | undefined,
 ): string {
   return value === "modern" ? "modern" : DEFAULT_APPEARANCE_PRESET;
 }
 
+/**
+ * 函数 `applyAppearancePreset`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - value: 参数 value
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function applyAppearancePreset(
   value: string | null | undefined,
 ): string {

@@ -10,6 +10,17 @@ pub(super) const USER_AGENT: &str = "CodexManager-Updater";
 #[cfg(target_os = "windows")]
 pub(super) const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+/// 函数 `now_unix_secs`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn now_unix_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -17,6 +28,17 @@ pub(super) fn now_unix_secs() -> u64 {
         .unwrap_or(0)
 }
 
+/// 函数 `resolve_update_repo`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn resolve_update_repo() -> String {
     std::env::var("CODEXMANAGER_UPDATE_REPO")
         .ok()
@@ -25,15 +47,48 @@ pub(super) fn resolve_update_repo() -> String {
         .unwrap_or_else(|| DEFAULT_UPDATE_REPO.to_string())
 }
 
+/// 函数 `normalize_version`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn normalize_version(input: &str) -> Result<Version, String> {
     let normalized = input.trim().trim_start_matches(['v', 'V']);
     Version::parse(normalized).map_err(|err| format!("版本号无效 '{input}'：{err}"))
 }
 
+/// 函数 `current_exe_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn current_exe_path() -> Result<PathBuf, String> {
     std::env::current_exe().map_err(|err| format!("解析当前可执行文件路径失败：{err}"))
 }
 
+/// 函数 `current_mode_and_marker`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn current_mode_and_marker() -> Result<(String, bool, PathBuf, PathBuf), String> {
     let exe = current_exe_path()?;
     let exe_dir = exe
@@ -52,6 +107,17 @@ pub(super) fn current_mode_and_marker() -> Result<(String, bool, PathBuf, PathBu
     Ok((mode, is_portable, exe, marker))
 }
 
+/// 函数 `env_flag`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn env_flag(name: &str) -> Option<bool> {
     let raw = std::env::var(name).ok()?;
     let normalized = raw.trim().to_ascii_lowercase();
@@ -62,6 +128,17 @@ fn env_flag(name: &str) -> Option<bool> {
     }
 }
 
+/// 函数 `should_include_prerelease_updates_with_override`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn should_include_prerelease_updates_with_override(
     _current_version: &Version,
     override_value: Option<bool>,
@@ -69,6 +146,17 @@ pub(super) fn should_include_prerelease_updates_with_override(
     override_value.unwrap_or(false)
 }
 
+/// 函数 `should_include_prerelease_updates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn should_include_prerelease_updates(current_version: &Version) -> bool {
     should_include_prerelease_updates_with_override(
         current_version,
@@ -76,6 +164,17 @@ pub(super) fn should_include_prerelease_updates(current_version: &Version) -> bo
     )
 }
 
+/// 函数 `http_client`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn http_client() -> Result<Client, String> {
     Client::builder()
         .timeout(Duration::from_secs(30))
@@ -83,6 +182,17 @@ pub(super) fn http_client() -> Result<Client, String> {
         .map_err(|err| format!("创建 HTTP 客户端失败：{err}"))
 }
 
+/// 函数 `resolve_github_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn resolve_github_token() -> Option<String> {
     for key in ["CODEXMANAGER_GITHUB_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"] {
         if let Ok(value) = std::env::var(key) {
@@ -101,6 +211,17 @@ mod tests {
 
     use super::{normalize_version, should_include_prerelease_updates_with_override};
 
+    /// 函数 `prerelease_channel_defaults_to_stable_latest`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn prerelease_channel_defaults_to_stable_latest() {
         let stable = Version::parse("0.1.8").expect("stable version");
@@ -120,6 +241,17 @@ mod tests {
         ));
     }
 
+    /// 函数 `normalize_version_accepts_v_prefix`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn normalize_version_accepts_v_prefix() {
         let version = normalize_version(" v0.1.8 ").expect("normalized version");

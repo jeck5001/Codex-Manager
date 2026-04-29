@@ -1,16 +1,27 @@
 import { create } from "zustand";
 import { AppSettings, ServiceStatus } from "../../types";
 import { APP_NAV_DEFAULT_VISIBLE_IDS } from "@/lib/navigation";
+import {
+  TopLevelRoutePath,
+  toTopLevelRoutePath,
+} from "@/lib/app-shell/top-level-routes";
+import type { RuntimeCapabilities } from "@/types/runtime";
 
 interface AppState {
   serviceStatus: ServiceStatus;
   appSettings: AppSettings;
   isSidebarOpen: boolean;
+  runtimeCapabilities: RuntimeCapabilities | null;
+  currentShellPath: TopLevelRoutePath;
+  openShellTabs: TopLevelRoutePath[];
   
   setServiceStatus: (status: Partial<ServiceStatus>) => void;
   setAppSettings: (settings: Partial<AppSettings>) => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
+  navigateShellPath: (path: string) => void;
+  syncShellPathFromLocation: (path: string) => void;
+  closeShellTab: (path: string) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -118,6 +129,19 @@ export const useAppStore = create<AppState>((set) => ({
     visibleMenuItems: [...APP_NAV_DEFAULT_VISIBLE_IDS],
   },
   isSidebarOpen: true,
+  runtimeCapabilities: {
+    mode: "desktop-tauri",
+    rpcBaseUrl: "/api/rpc",
+    canManageService: true,
+    canSelfUpdate: true,
+    canCloseToTray: true,
+    canOpenLocalDir: true,
+    canUseBrowserFileImport: true,
+    canUseBrowserDownloadExport: true,
+    unsupportedReason: null,
+  },
+  currentShellPath: "/",
+  openShellTabs: ["/"],
 
   setServiceStatus: (status) => 
     set((state) => ({ serviceStatus: { ...state.serviceStatus, ...status } })),
@@ -128,4 +152,53 @@ export const useAppStore = create<AppState>((set) => ({
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   
   setSidebarOpen: (open) => set({ isSidebarOpen: open }),
+
+  navigateShellPath: (path) =>
+    set((state) => {
+      const nextPath = toTopLevelRoutePath(path);
+      if (typeof window !== "undefined" && window.location.pathname !== nextPath) {
+        window.history.pushState(null, "", nextPath);
+      }
+      return {
+        currentShellPath: nextPath,
+        openShellTabs: state.openShellTabs.includes(nextPath)
+          ? state.openShellTabs
+          : [...state.openShellTabs, nextPath],
+      };
+    }),
+
+  syncShellPathFromLocation: (path) =>
+    set((state) => {
+      const nextPath = toTopLevelRoutePath(path);
+      return {
+        currentShellPath: nextPath,
+        openShellTabs: state.openShellTabs.includes(nextPath)
+          ? state.openShellTabs
+          : [...state.openShellTabs, nextPath],
+      };
+    }),
+
+  closeShellTab: (path) =>
+    set((state) => {
+      const normalizedPath = toTopLevelRoutePath(path);
+      if (normalizedPath === "/") {
+        return state;
+      }
+      const remainingTabs = state.openShellTabs.filter(
+        (item) => item !== normalizedPath
+      );
+      const nextTabs: TopLevelRoutePath[] =
+        remainingTabs.length > 0 ? remainingTabs : ["/"];
+      const nextCurrentPath: TopLevelRoutePath =
+        state.currentShellPath === normalizedPath
+          ? nextTabs[nextTabs.length - 1]
+          : state.currentShellPath;
+      if (typeof window !== "undefined" && window.location.pathname !== nextCurrentPath) {
+        window.history.pushState(null, "", nextCurrentPath);
+      }
+      return {
+        currentShellPath: nextCurrentPath,
+        openShellTabs: nextTabs,
+      };
+    }),
 }));

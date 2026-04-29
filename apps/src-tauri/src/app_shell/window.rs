@@ -5,6 +5,17 @@ use super::state::KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE;
 
 pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
 
+/// 函数 `show_main_window`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn show_main_window(app: &tauri::AppHandle) {
     KEEP_ALIVE_FOR_LIGHTWEIGHT_CLOSE.store(false, std::sync::atomic::Ordering::Relaxed);
     let Some(window) = ensure_main_window(app) else {
@@ -18,6 +29,17 @@ pub(crate) fn show_main_window(app: &tauri::AppHandle) {
     let _ = window.set_focus();
 }
 
+/// 函数 `ensure_main_window`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - app: 参数 app
+///
+/// # 返回
+/// 返回函数执行结果
 fn ensure_main_window(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         return Some(window);

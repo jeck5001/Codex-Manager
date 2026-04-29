@@ -1,19 +1,28 @@
 use super::{
     clear_pending_usage_refresh_tasks_for_tests, enqueue_usage_refresh_with_worker,
-    next_usage_poll_cursor, reset_usage_poll_cursor_for_tests, token_refresh_schedule,
-    usage_poll_batch_indices,
+    next_usage_poll_cursor, reset_usage_poll_cursor_for_tests, resolve_token_refresh_issuer,
+    run_token_refresh_task, should_retry_usage_refresh_with_token, token_refresh_access_exp_cutoff,
+    token_refresh_due_cutoff, token_refresh_schedule, usage_poll_batch_indices,
 };
-use codexmanager_core::storage::{now_ts, Token};
+use codexmanager_core::storage::{now_ts, Account, Storage, Token};
 use std::collections::HashSet;
 use std::sync::mpsc;
-use std::sync::Mutex;
 use std::time::Duration;
 
-static USAGE_ASYNC_TEST_LOCK: Mutex<()> = Mutex::new(());
-
+/// 函数 `enqueue_usage_refresh_for_same_account_is_deduplicated_until_finish`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn enqueue_usage_refresh_for_same_account_is_deduplicated_until_finish() {
-    let _guard = USAGE_ASYNC_TEST_LOCK.lock().expect("lock");
+    let _guard = crate::test_env_guard();
     clear_pending_usage_refresh_tasks_for_tests();
     let (started_tx, started_rx) = mpsc::channel();
     let (release_tx, release_rx) = mpsc::channel();
@@ -39,9 +48,20 @@ fn enqueue_usage_refresh_for_same_account_is_deduplicated_until_finish() {
     clear_pending_usage_refresh_tasks_for_tests();
 }
 
+/// 函数 `enqueue_usage_refresh_for_different_accounts_keeps_queue_progress`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn enqueue_usage_refresh_for_different_accounts_keeps_queue_progress() {
-    let _guard = USAGE_ASYNC_TEST_LOCK.lock().expect("lock");
+    let _guard = crate::test_env_guard();
     clear_pending_usage_refresh_tasks_for_tests();
     let (started_tx, started_rx) = mpsc::channel::<String>();
     let (release_tx, release_rx) = mpsc::channel();
@@ -76,6 +96,17 @@ fn enqueue_usage_refresh_for_different_accounts_keeps_queue_progress() {
     clear_pending_usage_refresh_tasks_for_tests();
 }
 
+/// 函数 `schedule_prefers_exp_minus_ahead`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn schedule_prefers_exp_minus_ahead() {
     let now = now_ts();
@@ -92,6 +123,17 @@ fn schedule_prefers_exp_minus_ahead() {
     assert_eq!(scheduled_at, 4_102_444_200);
 }
 
+/// 函数 `schedule_falls_back_to_last_refresh_when_exp_missing`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn schedule_falls_back_to_last_refresh_when_exp_missing() {
     let now = now_ts();
@@ -108,6 +150,239 @@ fn schedule_falls_back_to_last_refresh_when_exp_missing() {
     assert_eq!(scheduled_at, now);
 }
 
+/// 函数 `schedule_skips_when_refresh_token_is_empty`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn schedule_skips_when_refresh_token_is_empty() {
+    let now = now_ts();
+    let token = Token {
+        account_id: "acc-empty-refresh".to_string(),
+        id_token: "id".to_string(),
+        access_token: "a.eyJleHAiOjQxMDI0NDQ4MDB9.s".to_string(),
+        refresh_token: String::new(),
+        api_key_access_token: None,
+        last_refresh: now - 10,
+    };
+    let (exp, scheduled_at) = token_refresh_schedule(&token, now, 600, 2700);
+    assert_eq!(exp, None);
+    assert_eq!(scheduled_at, i64::MAX);
+}
+
+/// 函数 `usage_refresh_retry_skips_when_refresh_token_is_empty`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-12
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn usage_refresh_retry_skips_when_refresh_token_is_empty() {
+    let token = Token {
+        account_id: "acc-empty-refresh".to_string(),
+        id_token: "id".to_string(),
+        access_token: "access".to_string(),
+        refresh_token: String::new(),
+        api_key_access_token: None,
+        last_refresh: now_ts(),
+    };
+
+    assert!(!should_retry_usage_refresh_with_token(
+        &token,
+        "usage endpoint status 401 Unauthorized"
+    ));
+    assert!(!should_retry_usage_refresh_with_token(
+        &token,
+        "usage endpoint status 403 Forbidden"
+    ));
+}
+
+/// 函数 `due_cutoff_includes_next_poll_window_and_buffer`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-06
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn due_cutoff_includes_next_poll_window_and_buffer() {
+    let now = now_ts();
+    assert_eq!(token_refresh_due_cutoff(now, 600), now + 660);
+}
+
+/// 函数 `access_exp_cutoff_includes_refresh_ahead_window`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-26
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn access_exp_cutoff_includes_refresh_ahead_window() {
+    assert_eq!(token_refresh_access_exp_cutoff(1_000, 600), 1_600);
+}
+
+/// 函数 `due_cutoff_covers_boundary_when_poll_interval_matches_refresh_ahead`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-06
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn due_cutoff_covers_boundary_when_poll_interval_matches_refresh_ahead() {
+    let exp = 4_102_444_800;
+    let now = exp - 1_260;
+    let token = Token {
+        account_id: "acc-boundary".to_string(),
+        id_token: "id".to_string(),
+        access_token: "a.eyJleHAiOjQxMDI0NDQ4MDB9.s".to_string(),
+        refresh_token: "refresh".to_string(),
+        api_key_access_token: None,
+        last_refresh: now - 10,
+    };
+    let (_, scheduled_at) = token_refresh_schedule(&token, now, 600, 2700);
+
+    assert_eq!(scheduled_at, exp - 600);
+    assert!(scheduled_at > now);
+    assert!(scheduled_at <= token_refresh_due_cutoff(now, 600));
+}
+
+/// 函数 `token_refresh_issuer_uses_account_issuer`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-26
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn token_refresh_issuer_uses_account_issuer() {
+    let now = now_ts();
+    let account = Account {
+        id: "acc-custom-issuer".to_string(),
+        label: "custom issuer".to_string(),
+        issuer: "https://custom-issuer.example".to_string(),
+        chatgpt_account_id: None,
+        workspace_id: None,
+        group_name: None,
+        sort: 0,
+        status: "active".to_string(),
+        created_at: now,
+        updated_at: now,
+    };
+
+    assert_eq!(
+        resolve_token_refresh_issuer(Some(&account), "https://auth.openai.com"),
+        "https://custom-issuer.example"
+    );
+}
+
+/// 函数 `token_refresh_issuer_falls_back_to_default`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-26
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn token_refresh_issuer_falls_back_to_default() {
+    let now = now_ts();
+    let account = Account {
+        id: "acc-empty-issuer".to_string(),
+        label: "empty issuer".to_string(),
+        issuer: "  ".to_string(),
+        chatgpt_account_id: None,
+        workspace_id: None,
+        group_name: None,
+        sort: 0,
+        status: "active".to_string(),
+        created_at: now,
+        updated_at: now,
+    };
+
+    assert_eq!(
+        resolve_token_refresh_issuer(Some(&account), "https://auth.openai.com"),
+        "https://auth.openai.com"
+    );
+    assert_eq!(
+        resolve_token_refresh_issuer(None, "https://auth.openai.com"),
+        "https://auth.openai.com"
+    );
+}
+
+/// 函数 `run_token_refresh_task_skips_empty_refresh_token`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn run_token_refresh_task_skips_empty_refresh_token() {
+    let storage = Storage::open_in_memory().expect("open in memory");
+    storage.init().expect("init");
+    let now = now_ts();
+    let mut token = Token {
+        account_id: "acc-empty-refresh".to_string(),
+        id_token: "id".to_string(),
+        access_token: "access".to_string(),
+        refresh_token: String::new(),
+        api_key_access_token: None,
+        last_refresh: now,
+    };
+
+    let refreshed =
+        run_token_refresh_task(&storage, &mut token, "https://auth.openai.com", "codex-cli");
+    assert!(!refreshed);
+}
+
+/// 函数 `usage_poll_batch_indices_rotate_from_cursor`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_poll_batch_indices_rotate_from_cursor() {
     reset_usage_poll_cursor_for_tests();
@@ -115,6 +390,17 @@ fn usage_poll_batch_indices_rotate_from_cursor() {
     assert_eq!(usage_poll_batch_indices(3, 1, 10), vec![1, 2, 0]);
 }
 
+/// 函数 `usage_poll_cursor_advances_by_processed_count`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_poll_cursor_advances_by_processed_count() {
     reset_usage_poll_cursor_for_tests();

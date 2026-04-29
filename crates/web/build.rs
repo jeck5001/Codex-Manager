@@ -1,12 +1,34 @@
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 
+/// 函数 `main`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn main() {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     emit_embedded_ui_tracking(&manifest_dir);
     compile_windows_icon(&manifest_dir);
 }
 
+/// 函数 `emit_embedded_ui_tracking`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - manifest_dir: 参数 manifest_dir
+///
+/// # 返回
+/// 无
 fn emit_embedded_ui_tracking(manifest_dir: &Path) {
     let dist_dir = manifest_dir.join("../../apps/out");
     println!("cargo:rerun-if-changed={}", dist_dir.display());
@@ -19,6 +41,17 @@ fn emit_embedded_ui_tracking(manifest_dir: &Path) {
     println!("cargo:rustc-env=CODEXMANAGER_WEB_DIST_FINGERPRINT={fingerprint}");
 }
 
+/// 函数 `fingerprint_tree`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - root: 参数 root
+///
+/// # 返回
+/// 返回函数执行结果
 fn fingerprint_tree(root: &Path) -> String {
     let mut pending = VecDeque::from([root.to_path_buf()]);
     let mut items = Vec::new();
@@ -62,6 +95,17 @@ fn fingerprint_tree(root: &Path) -> String {
     }
 }
 
+/// 函数 `compile_windows_icon`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - manifest_dir: 参数 manifest_dir
+///
+/// # 返回
+/// 无
 #[cfg(windows)]
 fn compile_windows_icon(manifest_dir: &Path) {
     // 仅在主包构建时嵌入图标，避免作为依赖参与其它目标（例如桌面端）链接时引入资源冲突风险。
@@ -82,5 +126,16 @@ fn compile_windows_icon(manifest_dir: &Path) {
         .expect("failed to compile Windows resources (icon)");
 }
 
+/// 函数 `compile_windows_icon`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - _manifest_dir: 参数 _manifest_dir
+///
+/// # 返回
+/// 无
 #[cfg(not(windows))]
 fn compile_windows_icon(_manifest_dir: &Path) {}

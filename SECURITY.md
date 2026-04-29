@@ -1,5 +1,13 @@
 # SECURITY
 
+默认语言：简体中文
+
+其他语言入口：
+
+- English: [docs/en/SECURITY.md](docs/en/SECURITY.md)
+- Русский: [docs/ru/Безопасность.md](docs/ru/Безопасность.md)
+- 한국어: [docs/ko/보안.md](docs/ko/보안.md)
+
 ## 支持范围
 
 CodexManager 当前仍在快速迭代，但会尽量处理合理范围内的安全问题报告。

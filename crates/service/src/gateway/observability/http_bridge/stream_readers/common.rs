@@ -1,14 +1,18 @@
 use super::{Arc, Mutex, UpstreamResponseUsage};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const DEFAULT_SSE_KEEPALIVE_INTERVAL_MS: u64 = 15_000;
 const ENV_SSE_KEEPALIVE_INTERVAL_MS: &str = "CODEXMANAGER_SSE_KEEPALIVE_INTERVAL_MS";
+const UPSTREAM_SSE_FRAME_CHANNEL_CAPACITY: usize = 128;
 
 static SSE_KEEPALIVE_INTERVAL_MS: AtomicU64 = AtomicU64::new(DEFAULT_SSE_KEEPALIVE_INTERVAL_MS);
+const STREAM_INCOMPLETE_FALLBACK_MESSAGE: &str = "连接中断（可能是网络波动或客户端主动取消）";
+const STREAM_READ_FAILED_FALLBACK_MESSAGE: &str = "上游中途断开，未返回具体错误信息";
+const STREAM_IDLE_TIMEOUT_FALLBACK_MESSAGE: &str = "上游流式空闲超时";
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PassthroughSseCollector {
@@ -19,29 +23,56 @@ pub(crate) struct PassthroughSseCollector {
     pub(crate) last_event_type: Option<String>,
 }
 
+fn elapsed_ms_since(started_at: Instant) -> i64 {
+    started_at.elapsed().as_millis().min(i64::MAX as u128) as i64
+}
+
+pub(super) fn mark_first_response_ms(
+    usage_collector: &Arc<Mutex<PassthroughSseCollector>>,
+    started_at: Instant,
+) {
+    if let Ok(mut collector) = usage_collector.lock() {
+        if collector.usage.first_response_ms.is_none() {
+            collector.usage.first_response_ms = Some(elapsed_ms_since(started_at));
+        }
+    }
+}
+
+pub(super) fn mark_first_response_ms_on_usage(
+    usage_collector: &Arc<Mutex<UpstreamResponseUsage>>,
+    started_at: Instant,
+) {
+    if let Ok(mut usage) = usage_collector.lock() {
+        if usage.first_response_ms.is_none() {
+            usage.first_response_ms = Some(elapsed_ms_since(started_at));
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SseKeepAliveFrame {
     Comment,
     OpenAIResponses,
-    OpenAIChatCompletions,
-    OpenAICompletions,
     Anthropic,
 }
 
 impl SseKeepAliveFrame {
+    /// 函数 `bytes`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn bytes(self) -> &'static [u8] {
         match self {
             Self::Comment => b": keep-alive\n\n",
             Self::OpenAIResponses => b"data: {\"type\":\"codexmanager.keepalive\"}\n\n",
-            Self::OpenAIChatCompletions => {
-                b"data: {\"id\":\"cm_keepalive\",\"object\":\"chat.completion.chunk\",\"created\":0,\"model\":\"codexmanager.keepalive\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":null}]}\n\n"
-            }
-            Self::OpenAICompletions => {
-                b"data: {\"id\":\"cm_keepalive\",\"object\":\"text_completion\",\"created\":0,\"model\":\"codexmanager.keepalive\",\"choices\":[{\"index\":0,\"text\":\"\",\"finish_reason\":null}]}\n\n"
-            }
-            Self::Anthropic => {
-                b"event: ping\ndata: {\"type\":\"ping\"}\n\n"
-            }
+            Self::Anthropic => b"event: ping\ndata: {\"type\":\"ping\"}\n\n",
         }
     }
 }
@@ -58,8 +89,12 @@ pub(crate) struct UpstreamSseFramePump {
 }
 
 impl UpstreamSseFramePump {
-    pub(crate) fn new(upstream: reqwest::blocking::Response) -> Self {
-        let (tx, rx) = mpsc::sync_channel::<UpstreamSseFramePumpItem>(32);
+    pub(crate) fn from_reader<R>(upstream: R) -> Self
+    where
+        R: Read + Send + 'static,
+    {
+        let (tx, rx) =
+            mpsc::sync_channel::<UpstreamSseFramePumpItem>(UPSTREAM_SSE_FRAME_CHANNEL_CAPACITY);
         thread::spawn(move || {
             let mut reader = BufReader::new(upstream);
             let mut pending_frame_lines = Vec::new();
@@ -97,6 +132,32 @@ impl UpstreamSseFramePump {
         Self { rx }
     }
 
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    pub(crate) fn new(upstream: reqwest::blocking::Response) -> Self {
+        Self::from_reader(upstream)
+    }
+
+    /// 函数 `recv_timeout`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(crate) fn recv_timeout(
         &self,
         timeout: Duration,
@@ -105,6 +166,17 @@ impl UpstreamSseFramePump {
     }
 }
 
+/// 函数 `reload_from_env`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn reload_from_env() {
     SSE_KEEPALIVE_INTERVAL_MS.store(
         std::env::var(ENV_SSE_KEEPALIVE_INTERVAL_MS)
@@ -115,15 +187,77 @@ pub(super) fn reload_from_env() {
     );
 }
 
+/// 函数 `sse_keepalive_interval`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn sse_keepalive_interval() -> Duration {
     let interval_ms = SSE_KEEPALIVE_INTERVAL_MS.load(Ordering::Relaxed);
     Duration::from_millis(interval_ms.max(1))
 }
 
+pub(super) fn stream_wait_timeout(last_upstream_activity: Instant) -> Duration {
+    let keepalive = sse_keepalive_interval();
+    let Some(idle_timeout) = crate::gateway::upstream_stream_timeout() else {
+        return keepalive;
+    };
+    let elapsed = last_upstream_activity.elapsed();
+    if elapsed >= idle_timeout {
+        return Duration::from_millis(1);
+    }
+    keepalive.min(
+        idle_timeout
+            .saturating_sub(elapsed)
+            .max(Duration::from_millis(1)),
+    )
+}
+
+pub(super) fn stream_idle_timed_out(last_upstream_activity: Instant) -> bool {
+    crate::gateway::upstream_stream_timeout()
+        .is_some_and(|idle_timeout| last_upstream_activity.elapsed() >= idle_timeout)
+}
+
+pub(super) fn stream_idle_timeout_message() -> String {
+    STREAM_IDLE_TIMEOUT_FALLBACK_MESSAGE.to_string()
+}
+
+pub(super) fn should_emit_keepalive(saw_upstream_frame: bool) -> bool {
+    saw_upstream_frame
+}
+
+/// 函数 `current_sse_keepalive_interval_ms`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn current_sse_keepalive_interval_ms() -> u64 {
     SSE_KEEPALIVE_INTERVAL_MS.load(Ordering::Relaxed).max(1)
 }
 
+/// 函数 `set_sse_keepalive_interval_ms`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn set_sse_keepalive_interval_ms(interval_ms: u64) -> Result<u64, String> {
     if interval_ms == 0 {
         return Err("SSE keepalive interval must be greater than 0".to_string());
@@ -133,17 +267,17 @@ pub(super) fn set_sse_keepalive_interval_ms(interval_ms: u64) -> Result<u64, Str
     Ok(interval_ms)
 }
 
-pub(super) fn collector_output_text_trimmed(
-    usage_collector: &Arc<Mutex<PassthroughSseCollector>>,
-) -> Option<String> {
-    usage_collector
-        .lock()
-        .ok()
-        .and_then(|collector| collector.usage.output_text.clone())
-        .map(|text| text.trim().to_string())
-        .filter(|text| !text.is_empty())
-}
-
+/// 函数 `mark_collector_terminal_success`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn mark_collector_terminal_success(
     usage_collector: &Arc<Mutex<PassthroughSseCollector>>,
 ) {
@@ -153,39 +287,79 @@ pub(super) fn mark_collector_terminal_success(
     }
 }
 
+/// 函数 `stream_incomplete_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn stream_incomplete_message() -> String {
-    "上游流中途中断（未正常结束）".to_string()
+    STREAM_INCOMPLETE_FALLBACK_MESSAGE.to_string()
 }
 
+/// 函数 `stream_reader_disconnected_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn stream_reader_disconnected_message() -> String {
-    "上游流读取失败（连接中断）".to_string()
+    STREAM_INCOMPLETE_FALLBACK_MESSAGE.to_string()
 }
 
+pub(super) fn upstream_hint_or_stream_incomplete_message(
+    upstream_error_hint: Option<&str>,
+) -> String {
+    upstream_error_hint
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(stream_incomplete_message)
+}
+
+/// 函数 `classify_upstream_stream_read_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn classify_upstream_stream_read_error(raw: &str) -> String {
-    let normalized = raw.trim().to_ascii_lowercase();
-    if normalized.is_empty() {
-        return "上游流读取失败".to_string();
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return STREAM_READ_FAILED_FALLBACK_MESSAGE.to_string();
+    }
+    let normalized = trimmed.to_ascii_lowercase();
+    if normalized == "request or response body error" || normalized == "stream read failed" {
+        return STREAM_READ_FAILED_FALLBACK_MESSAGE.to_string();
     }
     if normalized.contains("timed out") || normalized.contains("timeout") {
-        return "上游请求超时".to_string();
+        return STREAM_IDLE_TIMEOUT_FALLBACK_MESSAGE.to_string();
     }
-    if normalized.contains("broken pipe")
-        || normalized.contains("connection reset")
+    if normalized.contains("connection reset")
         || normalized.contains("connection aborted")
-        || normalized.contains("forcibly closed")
+        || normalized.contains("connection was forcibly closed")
+        || normalized.contains("broken pipe")
         || normalized.contains("unexpected eof")
-        || normalized.contains("early eof")
+        || normalized.contains("connection closed before message completed")
     {
-        return "上游流读取失败（连接中断）".to_string();
+        return STREAM_INCOMPLETE_FALLBACK_MESSAGE.to_string();
     }
-    if normalized.contains("request or response body error")
-        || normalized.contains("response body")
-        || normalized.contains("error decoding response body")
-        || normalized.contains("body error")
-    {
-        return "上游返回的不是正常接口数据，可能是验证页、拦截页或错误页".to_string();
-    }
-    "上游流读取失败".to_string()
+    trimmed.to_string()
 }
 
 #[cfg(test)]
@@ -195,36 +369,84 @@ mod tests {
         stream_reader_disconnected_message,
     };
 
+    /// 函数 `classify_upstream_stream_read_error_maps_body_error`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn classify_upstream_stream_read_error_maps_body_error() {
         assert_eq!(
             classify_upstream_stream_read_error("request or response body error"),
-            "上游返回的不是正常接口数据，可能是验证页、拦截页或错误页"
+            "上游中途断开，未返回具体错误信息"
         );
     }
 
+    /// 函数 `classify_upstream_stream_read_error_maps_disconnect`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn classify_upstream_stream_read_error_maps_disconnect() {
         assert_eq!(
             classify_upstream_stream_read_error("connection reset by peer"),
-            "上游流读取失败（连接中断）"
+            "连接中断（可能是网络波动或客户端主动取消）"
         );
     }
 
+    /// 函数 `classify_upstream_stream_read_error_maps_timeout`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn classify_upstream_stream_read_error_maps_timeout() {
         assert_eq!(
             classify_upstream_stream_read_error("operation timed out"),
-            "上游请求超时"
+            "上游流式空闲超时"
         );
     }
 
+    /// 函数 `stream_terminal_messages_are_user_friendly`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn stream_terminal_messages_are_user_friendly() {
-        assert_eq!(stream_incomplete_message(), "上游流中途中断（未正常结束）");
+        assert_eq!(
+            stream_incomplete_message(),
+            "连接中断（可能是网络波动或客户端主动取消）"
+        );
         assert_eq!(
             stream_reader_disconnected_message(),
-            "上游流读取失败（连接中断）"
+            "连接中断（可能是网络波动或客户端主动取消）"
         );
+        assert_eq!(super::stream_idle_timeout_message(), "上游流式空闲超时");
     }
 }

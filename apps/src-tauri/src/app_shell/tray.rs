@@ -14,6 +14,17 @@ use super::window::show_main_window;
 const TRAY_MENU_SHOW_MAIN: &str = "tray_show_main";
 const TRAY_MENU_QUIT_APP: &str = "tray_quit_app";
 
+/// 函数 `notify_existing_instance_focused`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn notify_existing_instance_focused() {
     let _ = MessageDialog::new()
         .set_title("CodexManager")
@@ -23,6 +34,17 @@ pub(crate) fn notify_existing_instance_focused() {
         .show();
 }
 
+/// 函数 `setup_tray`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn setup_tray(app: &tauri::AppHandle) -> Result<(), tauri::Error> {
     TRAY_AVAILABLE.store(false, std::sync::atomic::Ordering::Relaxed);
     let show_main = MenuItem::with_id(app, TRAY_MENU_SHOW_MAIN, "显示主窗口", true, None::<&str>)?;

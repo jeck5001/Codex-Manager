@@ -1,8 +1,22 @@
 use super::*;
 
+const MISSING_AUTH_JSON_OPENAI_API_KEY_ERROR: &str =
+    "配置错误：未配置auth.json的OPENAI_API_KEY(invalid api key)";
+
+/// 函数 `gateway_logs_invalid_api_key_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_logs_invalid_api_key_error() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-logs");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -10,7 +24,7 @@ fn gateway_logs_invalid_api_key_error() {
 
     let server = TestServer::start();
     let req_body = r#"{"model":"gpt-5.3-codex","input":"hello"}"#;
-    let (status, _) = post_http_raw(
+    let (status, body) = post_http_raw(
         &server.addr,
         "/v1/responses",
         req_body,
@@ -20,6 +34,14 @@ fn gateway_logs_invalid_api_key_error() {
         ],
     );
     assert_eq!(status, 403);
+    assert!(
+        body.contains("invalid api key"),
+        "gateway should return raw upstream message, got {body}"
+    );
+    assert!(
+        !body.contains("未配置auth.json"),
+        "gateway response should not expose bilingual log text, got {body}"
+    );
 
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init schema");
@@ -41,20 +63,31 @@ fn gateway_logs_invalid_api_key_error() {
             && item.output_tokens.is_none()
             && item.total_tokens.is_none()
             && item.reasoning_output_tokens.is_none()
-            && item.error.as_deref() == Some("invalid api key")
+            && item.error.as_deref() == Some(MISSING_AUTH_JSON_OPENAI_API_KEY_ERROR)
     });
     assert!(
         found,
-        "expected invalid api key request to be logged, got {:?}",
+        "expected missing auth.json OPENAI_API_KEY request to be logged, got {:?}",
         logs.iter()
             .map(|v| (&v.request_path, v.status_code, v.error.as_deref()))
             .collect::<Vec<_>>()
     );
 }
 
+/// 函数 `gateway_tolerates_non_ascii_turn_metadata_header`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_tolerates_non_ascii_turn_metadata_header() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-logs-nonascii");
     let db_path: PathBuf = dir.join("codexmanager.db");
 

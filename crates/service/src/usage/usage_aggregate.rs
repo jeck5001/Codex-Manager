@@ -10,6 +10,17 @@ const MINUTES_PER_HOUR: i64 = 60;
 const MINUTES_PER_DAY: i64 = 24 * MINUTES_PER_HOUR;
 const ROUNDING_BIAS: i64 = 3;
 
+/// 函数 `read_usage_aggregate_summary`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_usage_aggregate_summary() -> Result<UsageAggregateSummaryResult, String> {
     let storage = open_storage().ok_or_else(|| "open storage failed".to_string())?;
     let accounts = storage
@@ -22,6 +33,17 @@ pub(crate) fn read_usage_aggregate_summary() -> Result<UsageAggregateSummaryResu
     Ok(compute_usage_aggregate_summary(&accounts, &usage_items))
 }
 
+/// 函数 `compute_usage_aggregate_summary`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn compute_usage_aggregate_summary(
     accounts: &[Account],
     usage_items: &[UsageSnapshotRecord],
@@ -98,14 +120,48 @@ pub(crate) fn compute_usage_aggregate_summary(
     }
 }
 
+/// 函数 `normalize_percent`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn normalize_percent(value: Option<f64>) -> Option<f64> {
     value.map(|parsed| parsed.clamp(0.0, 100.0))
 }
 
+/// 函数 `remaining_percent`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn remaining_percent(value: Option<f64>) -> Option<f64> {
     normalize_percent(value).map(|used| (100.0 - used).max(0.0))
 }
 
+/// 函数 `average_percent`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - total: 参数 total
+/// - count: 参数 count
+///
+/// # 返回
+/// 返回函数执行结果
 fn average_percent(total: f64, count: i64) -> Option<i64> {
     if count <= 0 {
         return None;
@@ -113,10 +169,32 @@ fn average_percent(total: f64, count: i64) -> Option<i64> {
     Some((total / count as f64).round() as i64)
 }
 
+/// 函数 `is_long_window`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - window_minutes: 参数 window_minutes
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_long_window(window_minutes: Option<i64>) -> bool {
     window_minutes.is_some_and(|value| value > MINUTES_PER_DAY + ROUNDING_BIAS)
 }
 
+/// 函数 `is_free_plan_usage`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn is_free_plan_usage(raw: Option<&str>) -> bool {
     let Some(value) = parse_credits(raw) else {
         return false;
@@ -126,6 +204,17 @@ fn is_free_plan_usage(raw: Option<&str>) -> bool {
         .unwrap_or(false)
 }
 
+/// 函数 `parse_credits`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_credits(raw: Option<&str>) -> Option<Value> {
     let text = raw?.trim();
     if text.is_empty() {
@@ -134,6 +223,17 @@ fn parse_credits(raw: Option<&str>) -> Option<Value> {
     serde_json::from_str(text).ok()
 }
 
+/// 函数 `extract_plan_type_recursive`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_plan_type_recursive(value: &Value) -> Option<String> {
     match value {
         Value::Array(items) => items.iter().find_map(extract_plan_type_recursive),
@@ -166,6 +266,17 @@ mod tests {
     use super::compute_usage_aggregate_summary;
     use codexmanager_core::storage::{now_ts, Account, UsageSnapshotRecord};
 
+    /// 函数 `account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - id: 参数 id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn account(id: &str) -> Account {
         Account {
             id: id.to_string(),
@@ -181,6 +292,22 @@ mod tests {
         }
     }
 
+    /// 函数 `usage_record`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - account_id: 参数 account_id
+    /// - used_percent: 参数 used_percent
+    /// - window_minutes: 参数 window_minutes
+    /// - secondary_used_percent: 参数 secondary_used_percent
+    /// - secondary_window_minutes: 参数 secondary_window_minutes
+    /// - credits_json: 参数 credits_json
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn usage_record(
         account_id: &str,
         used_percent: Option<f64>,
@@ -202,6 +329,17 @@ mod tests {
         }
     }
 
+    /// 函数 `aggregate_summary_routes_free_single_window_account_to_secondary_bucket`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn aggregate_summary_routes_free_single_window_account_to_secondary_bucket() {
         let accounts = vec![account("a1"), account("a2")];
@@ -226,6 +364,17 @@ mod tests {
         assert_eq!(result.secondary_remain_percent, Some(75));
     }
 
+    /// 函数 `aggregate_summary_preserves_unknown_counts_per_bucket`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn aggregate_summary_preserves_unknown_counts_per_bucket() {
         let accounts = vec![account("a1"), account("a2"), account("a3")];

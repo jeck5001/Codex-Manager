@@ -1,13 +1,16 @@
 {
   "name": "codexmanager-frontend",
-  "version": "0.1.10",
+  "version": "0.2.6",
   "packageManager": "pnpm@10.30.3",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "dev:desktop": "next dev --webpack -p 3005",
+    "dev:desktop": "next dev --webpack -H 127.0.0.1 -p 3005",
     "build": "next build",
     "build:desktop": "next build",
+    "test:e2e": "playwright test",
+    "test:navigation": "playwright test tests/navigation-cache.spec.ts",
+    "test:runtime": "node --test tests/runtime-capabilities.test.mjs tests/transport-errors.test.mjs tests/gateway-settings.test.mjs tests/transport-web-commands.test.mjs tests/rpc-http.test.mjs tests/app-updates.test.mjs tests/account-auth.test.mjs tests/account-maintenance.test.mjs tests/usage-response.test.mjs",
     "start": "next start",
     "lint": "eslint"
   },
@@ -29,6 +32,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@playwright/test": "1.58.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

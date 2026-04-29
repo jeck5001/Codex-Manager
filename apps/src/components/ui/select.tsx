@@ -8,6 +8,19 @@ import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
 const Select = SelectPrimitive.Root
 
+/**
+ * 函数 `SelectGroup`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
     <SelectPrimitive.Group
@@ -18,6 +31,19 @@ function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   )
 }
 
+/**
+ * 函数 `SelectValue`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
   return (
     <SelectPrimitive.Value
@@ -28,6 +54,19 @@ function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
   )
 }
 
+/**
+ * 函数 `SelectTrigger`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function SelectTrigger({
   className,
   size = "default",
@@ -56,6 +95,19 @@ function SelectTrigger({
   )
 }
 
+/**
+ * 函数 `SelectContent`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function SelectContent({
   className,
   children,
@@ -95,6 +147,19 @@ function SelectContent({
   )
 }
 
+/**
+ * 函数 `SelectLabel`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function SelectLabel({
   className,
   ...props
@@ -108,6 +173,19 @@ function SelectLabel({
   )
 }
 
+/**
+ * 函数 `SelectItem`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function SelectItem({
   className,
   children,
@@ -136,6 +214,19 @@ function SelectItem({
   )
 }
 
+/**
+ * 函数 `SelectSeparator`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function SelectSeparator({
   className,
   ...props
@@ -149,6 +240,19 @@ function SelectSeparator({
   )
 }
 
+/**
+ * 函数 `SelectScrollUpButton`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function SelectScrollUpButton({
   className,
   ...props
@@ -168,6 +272,19 @@ function SelectScrollUpButton({
   )
 }
 
+/**
+ * 函数 `SelectScrollDownButton`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function SelectScrollDownButton({
   className,
   ...props

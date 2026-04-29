@@ -1,14 +1,20 @@
 use super::{
     append_output_text, collect_output_text_from_event_fields, collect_response_output_text, json,
-    sse_keepalive_interval, Arc, Cursor, Map, Mutex, Read, SseKeepAliveFrame,
-    UpstreamResponseUsage, UpstreamSseFramePump, UpstreamSseFramePumpItem, Value,
+    mark_first_response_ms_on_usage, should_emit_keepalive, stream_idle_timed_out,
+    stream_wait_timeout, Arc, Cursor, Map, Mutex, Read, SseKeepAliveFrame, UpstreamResponseUsage,
+    UpstreamSseFramePump, UpstreamSseFramePumpItem, Value,
 };
+use std::time::Instant;
 
 pub(crate) struct AnthropicSseReader {
     upstream: UpstreamSseFramePump,
     out_cursor: Cursor<Vec<u8>>,
     state: AnthropicSseState,
+    tool_name_restore_map: Option<crate::gateway::ToolNameRestoreMap>,
     usage_collector: Arc<Mutex<UpstreamResponseUsage>>,
+    request_started_at: Instant,
+    last_upstream_activity: Instant,
+    saw_upstream_frame: bool,
 }
 
 #[derive(Default)]
@@ -29,44 +35,154 @@ struct AnthropicSseState {
 }
 
 impl AnthropicSseReader {
-    pub(crate) fn new(
-        upstream: reqwest::blocking::Response,
+    pub(crate) fn from_reader<R>(
+        upstream: R,
         usage_collector: Arc<Mutex<UpstreamResponseUsage>>,
-    ) -> Self {
+        fallback_model: Option<&str>,
+        tool_name_restore_map: Option<crate::gateway::ToolNameRestoreMap>,
+        request_started_at: Instant,
+    ) -> Self
+    where
+        R: Read + Send + 'static,
+    {
+        let mut state = AnthropicSseState::default();
+        state.model = fallback_model
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
         Self {
-            upstream: UpstreamSseFramePump::new(upstream),
+            upstream: UpstreamSseFramePump::from_reader(upstream),
             out_cursor: Cursor::new(Vec::new()),
-            state: AnthropicSseState::default(),
+            state,
+            tool_name_restore_map,
             usage_collector,
+            request_started_at,
+            last_upstream_activity: Instant::now(),
+            saw_upstream_frame: false,
         }
     }
 
+    /// 函数 `new`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - crate: 参数 crate
+    ///
+    /// # 返回
+    /// 返回函数执行结果
+    pub(crate) fn new(
+        upstream: reqwest::blocking::Response,
+        usage_collector: Arc<Mutex<UpstreamResponseUsage>>,
+        fallback_model: Option<&str>,
+        tool_name_restore_map: Option<crate::gateway::ToolNameRestoreMap>,
+        request_started_at: Instant,
+    ) -> Self {
+        Self::from_reader(
+            upstream,
+            usage_collector,
+            fallback_model,
+            tool_name_restore_map,
+            request_started_at,
+        )
+    }
+
+    /// 函数 `next_chunk`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn next_chunk(&mut self) -> std::io::Result<Vec<u8>> {
         loop {
-            match self.upstream.recv_timeout(sse_keepalive_interval()) {
+            match self
+                .upstream
+                .recv_timeout(stream_wait_timeout(self.last_upstream_activity))
+            {
                 Ok(UpstreamSseFramePumpItem::Frame(frame)) => {
+                    self.last_upstream_activity = Instant::now();
+                    self.saw_upstream_frame = true;
                     let mapped = self.process_sse_frame(&frame);
                     if !mapped.is_empty() {
+                        mark_first_response_ms_on_usage(
+                            &self.usage_collector,
+                            self.request_started_at,
+                        );
                         return Ok(mapped);
                     }
                     continue;
                 }
                 Ok(UpstreamSseFramePumpItem::Eof) => {
-                    return Ok(self.finish_stream());
+                    self.last_upstream_activity = Instant::now();
+                    let finished = self.finish_stream();
+                    if !finished.is_empty() {
+                        mark_first_response_ms_on_usage(
+                            &self.usage_collector,
+                            self.request_started_at,
+                        );
+                    }
+                    return Ok(finished);
                 }
                 Ok(UpstreamSseFramePumpItem::Error(_err)) => {
-                    return Ok(self.finish_stream());
+                    self.last_upstream_activity = Instant::now();
+                    let finished = self.finish_stream();
+                    if !finished.is_empty() {
+                        mark_first_response_ms_on_usage(
+                            &self.usage_collector,
+                            self.request_started_at,
+                        );
+                    }
+                    return Ok(finished);
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                    return Ok(SseKeepAliveFrame::Anthropic.bytes().to_vec());
+                    if stream_idle_timed_out(self.last_upstream_activity) {
+                        let finished = self.finish_stream();
+                        if !finished.is_empty() {
+                            mark_first_response_ms_on_usage(
+                                &self.usage_collector,
+                                self.request_started_at,
+                            );
+                        }
+                        return Ok(finished);
+                    }
+                    if should_emit_keepalive(self.saw_upstream_frame) {
+                        return Ok(SseKeepAliveFrame::Anthropic.bytes().to_vec());
+                    }
+                    continue;
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                    return Ok(self.finish_stream());
+                    let finished = self.finish_stream();
+                    if !finished.is_empty() {
+                        mark_first_response_ms_on_usage(
+                            &self.usage_collector,
+                            self.request_started_at,
+                        );
+                    }
+                    return Ok(finished);
                 }
             }
         }
     }
 
+    /// 函数 `process_sse_frame`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - lines: 参数 lines
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn process_sse_frame(&mut self, lines: &[String]) -> Vec<u8> {
         let mut data_lines = Vec::new();
         for line in lines {
@@ -90,6 +206,18 @@ impl AnthropicSseReader {
         self.consume_openai_event(&value)
     }
 
+    /// 函数 `consume_openai_event`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn consume_openai_event(&mut self, value: &Value) -> Vec<u8> {
         self.capture_response_meta(value);
         let mut out = String::new();
@@ -151,7 +279,8 @@ impl AnthropicSseReader {
                 let tool_name = item_obj
                     .get("name")
                     .and_then(Value::as_str)
-                    .unwrap_or("tool");
+                    .map(|name| restore_tool_name(name, self.tool_name_restore_map.as_ref()))
+                    .unwrap_or_else(|| "tool".to_string());
                 append_sse_event(
                     &mut out,
                     "content_block_start",
@@ -233,6 +362,18 @@ impl AnthropicSseReader {
         out.into_bytes()
     }
 
+    /// 函数 `capture_response_meta`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - value: 参数 value
+    ///
+    /// # 返回
+    /// 无
     fn capture_response_meta(&mut self, value: &Value) {
         if let Some(id) = value.get("id").and_then(Value::as_str) {
             self.state.response_id = Some(id.to_string());
@@ -254,10 +395,15 @@ impl AnthropicSseReader {
                     .or_else(|| usage.get("prompt_tokens").and_then(Value::as_i64))
                     .unwrap_or(self.state.input_tokens);
                 self.state.cached_input_tokens = usage
-                    .get("input_tokens_details")
-                    .and_then(Value::as_object)
-                    .and_then(|details| details.get("cached_tokens"))
+                    .get("cache_read_input_tokens")
                     .and_then(Value::as_i64)
+                    .or_else(|| {
+                        usage
+                            .get("input_tokens_details")
+                            .and_then(Value::as_object)
+                            .and_then(|details| details.get("cached_tokens"))
+                            .and_then(Value::as_i64)
+                    })
                     .or_else(|| {
                         usage
                             .get("prompt_tokens_details")
@@ -276,10 +422,15 @@ impl AnthropicSseReader {
                     .and_then(Value::as_i64)
                     .or(self.state.total_tokens);
                 self.state.reasoning_output_tokens = usage
-                    .get("output_tokens_details")
-                    .and_then(Value::as_object)
-                    .and_then(|details| details.get("reasoning_tokens"))
+                    .get("reasoning_output_tokens")
                     .and_then(Value::as_i64)
+                    .or_else(|| {
+                        usage
+                            .get("output_tokens_details")
+                            .and_then(Value::as_object)
+                            .and_then(|details| details.get("reasoning_tokens"))
+                            .and_then(Value::as_i64)
+                    })
                     .or_else(|| {
                         usage
                             .get("completion_tokens_details")
@@ -292,6 +443,18 @@ impl AnthropicSseReader {
         }
     }
 
+    /// 函数 `ensure_message_start`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - out: 参数 out
+    ///
+    /// # 返回
+    /// 无
     fn ensure_message_start(&mut self, out: &mut String) {
         if self.state.started {
             return;
@@ -310,15 +473,30 @@ impl AnthropicSseReader {
                     "content": [],
                     "stop_reason": Value::Null,
                     "stop_sequence": Value::Null,
-                    "usage": {
-                        "input_tokens": self.state.input_tokens.max(0),
-                        "output_tokens": 0
-                    }
+                    "usage": build_anthropic_usage(
+                        self.state.input_tokens.max(0),
+                        0,
+                        self.state.cached_input_tokens.max(0),
+                        None,
+                        None,
+                    )
                 }
             }),
         );
     }
 
+    /// 函数 `ensure_text_block_start`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - out: 参数 out
+    ///
+    /// # 返回
+    /// 无
     fn ensure_text_block_start(&mut self, out: &mut String) {
         if self.state.text_block_index.is_some() {
             return;
@@ -340,6 +518,18 @@ impl AnthropicSseReader {
         );
     }
 
+    /// 函数 `close_text_block`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - out: 参数 out
+    ///
+    /// # 返回
+    /// 无
     fn close_text_block(&mut self, out: &mut String) {
         let Some(index) = self.state.text_block_index.take() else {
             return;
@@ -354,6 +544,17 @@ impl AnthropicSseReader {
         );
     }
 
+    /// 函数 `finish_stream`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn finish_stream(&mut self) -> Vec<u8> {
         if self.state.finished {
             return Vec::new();
@@ -381,9 +582,13 @@ impl AnthropicSseReader {
                     "stop_reason": self.state.stop_reason.unwrap_or("end_turn"),
                     "stop_sequence": Value::Null
                 },
-                "usage": {
-                    "output_tokens": self.state.output_tokens.max(0)
-                }
+                "usage": build_anthropic_usage(
+                    self.state.input_tokens.max(0),
+                    self.state.output_tokens.max(0),
+                    self.state.cached_input_tokens.max(0),
+                    self.state.total_tokens.map(|value| value.max(0)),
+                    Some(self.state.reasoning_output_tokens.max(0)),
+                )
             }),
         );
         append_sse_event(&mut out, "message_stop", &json!({ "type": "message_stop" }));
@@ -392,6 +597,18 @@ impl AnthropicSseReader {
 }
 
 impl Read for AnthropicSseReader {
+    /// 函数 `read`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - buf: 参数 buf
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         loop {
             let read = self.out_cursor.read(buf)?;
@@ -407,6 +624,19 @@ impl Read for AnthropicSseReader {
     }
 }
 
+/// 函数 `append_sse_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - buffer: 参数 buffer
+/// - event_name: 参数 event_name
+/// - payload: 参数 payload
+///
+/// # 返回
+/// 无
 fn append_sse_event(buffer: &mut String, event_name: &str, payload: &Value) {
     let data = serde_json::to_string(payload).unwrap_or_else(|_| "{}".to_string());
     buffer.push_str("event: ");
@@ -417,6 +647,55 @@ fn append_sse_event(buffer: &mut String, event_name: &str, payload: &Value) {
     buffer.push_str("\n\n");
 }
 
+/// 函数 `build_anthropic_usage`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - input_tokens: 参数 input_tokens
+/// - output_tokens: 参数 output_tokens
+/// - cache_read_input_tokens: 参数 cache_read_input_tokens
+/// - total_tokens: 参数 total_tokens
+/// - reasoning_output_tokens: 参数 reasoning_output_tokens
+///
+/// # 返回
+/// 返回函数执行结果
+fn build_anthropic_usage(
+    input_tokens: i64,
+    output_tokens: i64,
+    cache_read_input_tokens: i64,
+    total_tokens: Option<i64>,
+    reasoning_output_tokens: Option<i64>,
+) -> Value {
+    let mut usage = Map::new();
+    usage.insert("input_tokens".to_string(), Value::from(input_tokens));
+    usage.insert("output_tokens".to_string(), Value::from(output_tokens));
+    usage.insert(
+        "cache_read_input_tokens".to_string(),
+        Value::from(cache_read_input_tokens),
+    );
+    if let Some(value) = total_tokens {
+        usage.insert("total_tokens".to_string(), Value::from(value));
+    }
+    if let Some(value) = reasoning_output_tokens {
+        usage.insert("reasoning_output_tokens".to_string(), Value::from(value));
+    }
+    Value::Object(usage)
+}
+
+/// 函数 `extract_function_call_input`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - item_obj: 参数 item_obj
+///
+/// # 返回
+/// 返回函数执行结果
 fn extract_function_call_input(item_obj: &Map<String, Value>) -> Option<Value> {
     const ARGUMENT_KEYS: [&str; 5] = [
         "arguments",
@@ -447,6 +726,17 @@ fn extract_function_call_input(item_obj: &Map<String, Value>) -> Option<Value> {
     None
 }
 
+/// 函数 `tool_input_partial_json`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn tool_input_partial_json(value: Value) -> Option<String> {
     let serialized = serde_json::to_string(&value).ok()?;
     let trimmed = serialized.trim();
@@ -454,4 +744,14 @@ fn tool_input_partial_json(value: Value) -> Option<String> {
         return None;
     }
     Some(trimmed.to_string())
+}
+
+fn restore_tool_name(
+    name: &str,
+    tool_name_restore_map: Option<&crate::gateway::ToolNameRestoreMap>,
+) -> String {
+    tool_name_restore_map
+        .and_then(|map| map.get(name))
+        .cloned()
+        .unwrap_or_else(|| name.to_string())
 }

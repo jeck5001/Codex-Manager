@@ -1,8 +1,19 @@
 use super::*;
 
+/// 函数 `gateway_stateless_retry_strips_encrypted_content_on_invalid_encrypted_content`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_stateless_retry_strips_encrypted_content_on_invalid_encrypted_content() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-strip-encrypted-content-on-400");
     let db_path: PathBuf = dir.join("codexmanager.db");
 
@@ -36,6 +47,7 @@ fn gateway_stateless_retry_strips_encrypted_content_on_invalid_encrypted_content
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init db");
     let now = now_ts();
+    seed_model_catalog_models(&storage, &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"]);
 
     storage
         .insert_account(&Account {
@@ -69,6 +81,11 @@ fn gateway_stateless_retry_strips_encrypted_content_on_invalid_encrypted_content
             name: Some("retry-strip-encrypted-content".to_string()),
             model_slug: Some("gpt-5.3-codex".to_string()),
             reasoning_effort: None,
+            service_tier: None,
+            rotation_strategy: "account_rotation".to_string(),
+            aggregate_api_id: None,
+            account_plan_filter: None,
+            aggregate_api_url: None,
             client_type: "codex".to_string(),
             protocol_type: "openai_compat".to_string(),
             auth_scheme: "authorization_bearer".to_string(),
@@ -106,13 +123,16 @@ fn gateway_stateless_retry_strips_encrypted_content_on_invalid_encrypted_content
         .expect("receive second upstream request");
     upstream_join.join().expect("join upstream");
 
-    assert!(!first.headers.contains_key("x-codex-turn-state"));
+    assert_eq!(
+        first.headers.get("x-codex-turn-state").map(String::as_str),
+        Some("gAAA_dummy_turn_state_blob")
+    );
     assert!(!first.headers.contains_key("conversation_id"));
     let first_body: serde_json::Value =
         serde_json::from_slice(&first.body).expect("parse first request body");
     assert!(
-        first_body.get("encrypted_content").is_none(),
-        "OpenAI v1 strict allowlist must drop non-official encrypted_content field"
+        first_body.get("encrypted_content").is_some(),
+        "default passthrough should preserve encrypted_content before stateless retry"
     );
 
     assert!(!second.headers.contains_key("x-codex-turn-state"));
@@ -125,9 +145,20 @@ fn gateway_stateless_retry_strips_encrypted_content_on_invalid_encrypted_content
     );
 }
 
+/// 函数 `gateway_request_log_keeps_only_final_result_for_multi_attempt_flow`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_request_log_keeps_only_final_result_for_multi_attempt_flow() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-final-log");
     let db_path: PathBuf = dir.join("codexmanager.db");
     let trace_log_path: PathBuf = dir.join("gateway-trace.log");
@@ -167,6 +198,7 @@ fn gateway_request_log_keeps_only_final_result_for_multi_attempt_flow() {
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init db");
     let now = now_ts();
+    seed_model_catalog_models(&storage, &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"]);
 
     for index in 1..=2 {
         storage
@@ -202,6 +234,11 @@ fn gateway_request_log_keeps_only_final_result_for_multi_attempt_flow() {
             name: Some("final-result-only".to_string()),
             model_slug: Some("gpt-5.3-codex".to_string()),
             reasoning_effort: Some("high".to_string()),
+            service_tier: None,
+            rotation_strategy: "account_rotation".to_string(),
+            aggregate_api_id: None,
+            account_plan_filter: None,
+            aggregate_api_url: None,
             client_type: "codex".to_string(),
             protocol_type: "anthropic_native".to_string(),
             auth_scheme: "x_api_key".to_string(),
@@ -262,7 +299,7 @@ fn gateway_request_log_keeps_only_final_result_for_multi_attempt_flow() {
     assert_eq!(final_logs[0].adapted_path.as_deref(), Some("/v1/responses"));
     assert_eq!(
         final_logs[0].response_adapter.as_deref(),
-        Some("AnthropicJson")
+        Some("AnthropicMessagesFromResponses")
     );
 
     assert!(
@@ -271,9 +308,20 @@ fn gateway_request_log_keeps_only_final_result_for_multi_attempt_flow() {
     );
 }
 
+/// 函数 `gateway_error_logging_writes_only_trace_log_file`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn gateway_error_logging_writes_only_trace_log_file() {
-    let _lock = lock_env();
+    let _lock = test_env_guard();
     let dir = new_test_dir("codexmanager-gateway-single-log-file");
     let db_path: PathBuf = dir.join("codexmanager.db");
     let trace_log_path: PathBuf = dir.join("gateway-trace.log");
@@ -299,6 +347,7 @@ fn gateway_error_logging_writes_only_trace_log_file() {
     let storage = Storage::open(&db_path).expect("open db");
     storage.init().expect("init db");
     let now = now_ts();
+    seed_model_catalog_models(&storage, &["claude-3-5-sonnet-20241022", "gpt-5.3-codex"]);
 
     storage
         .insert_account(&Account {
@@ -332,6 +381,11 @@ fn gateway_error_logging_writes_only_trace_log_file() {
             name: Some("single-log-error".to_string()),
             model_slug: Some("gpt-5.4".to_string()),
             reasoning_effort: Some("high".to_string()),
+            service_tier: None,
+            rotation_strategy: "account_rotation".to_string(),
+            aggregate_api_id: None,
+            account_plan_filter: None,
+            aggregate_api_url: None,
             client_type: "codex".to_string(),
             protocol_type: "openai_compat".to_string(),
             auth_scheme: "authorization_bearer".to_string(),

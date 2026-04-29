@@ -1,10 +1,7 @@
 name: prepare-frontend-dist
-description: Restore verified frontend dist artifact or build it locally when verify job is skipped.
+description: Restore the shared frontend dist artifact into apps/out.
 
 inputs:
-  verify-result:
-    description: needs.verify.result from the workflow job.
-    required: true
   artifact-name:
     description: Frontend dist artifact name.
     required: false
@@ -17,10 +14,6 @@ inputs:
     description: Built frontend directory relative to apps-dir.
     required: false
     default: out
-  build-command:
-    description: pnpm build command used when verify job is skipped.
-    required: false
-    default: build:desktop
   artifact-file:
     description: Downloaded tarball filename.
     required: false
@@ -29,15 +22,13 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Download prebuilt frontend dist
-      if: ${{ inputs.verify-result == 'success' }}
+    - name: Download shared frontend dist
       uses: actions/download-artifact@v8
       with:
         name: ${{ inputs.artifact-name }}
         path: .
 
-    - name: Restore prebuilt frontend dist
-      if: ${{ inputs.verify-result == 'success' }}
+    - name: Restore frontend dist
       shell: pwsh
       run: |
         $appsDir = '${{ inputs.apps-dir }}'
@@ -48,27 +39,5 @@ runs:
         }
         tar -xzf $artifactFile -C $appsDir
         if (-not (Test-Path (Join-Path $appsDir "$distDir/index.html") -PathType Leaf)) {
-          throw "prebuilt frontend dist restore failed: $appsDir/$distDir/index.html not found"
-        }
-
-    - name: Install frontend dependencies (fallback local build)
-      if: ${{ inputs.verify-result == 'skipped' }}
-      shell: pwsh
-      run: |
-        Push-Location '${{ inputs.apps-dir }}'
-        try {
-          pnpm install --frozen-lockfile
-        } finally {
-          Pop-Location
-        }
-
-    - name: Build frontend locally (fallback)
-      if: ${{ inputs.verify-result == 'skipped' }}
-      shell: pwsh
-      run: |
-        Push-Location '${{ inputs.apps-dir }}'
-        try {
-          pnpm run '${{ inputs.build-command }}'
-        } finally {
-          Pop-Location
+          throw "frontend dist restore failed: $appsDir/$distDir/index.html not found"
         }

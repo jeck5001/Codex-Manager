@@ -1,6 +1,10 @@
 import { invoke, withAddr } from "./transport";
 import {
   normalizeAccountList,
+  normalizeAggregateApiCreateResult,
+  normalizeAggregateApiList,
+  normalizeAggregateApiSecretResult,
+  normalizeAggregateApiTestResult,
   normalizeApiKeyCreateResult,
   normalizeApiKeyAllowedModels,
   normalizeApiKeyModelFallback,
@@ -9,6 +13,8 @@ import {
   normalizeApiKeyRateLimit,
   normalizeApiKeyUsageStats,
   normalizeLoginStartResult,
+  normalizeManagedModelCatalog,
+  normalizeManagedModelInfo,
   normalizeModelOptions,
   normalizeUsageAggregateSummary,
   normalizeUsageList,
@@ -28,6 +34,10 @@ import {
   AccountTeamManagerUploadManyResult,
   AccountTeamManagerUploadResult,
   AccountUsage,
+  AggregateApi,
+  AggregateApiCreateResult,
+  AggregateApiSecretResult,
+  AggregateApiTestResult,
   ApiKey,
   ApiKeyAllowedModelsConfig,
   ApiKeyCreateResult,
@@ -39,6 +49,8 @@ import {
   CurrentAccessTokenAccountReadResult,
   LoginStatusResult,
   LoginStartResult,
+  ManagedModelCatalog,
+  ManagedModelInfo,
   ModelOption,
   RegisterAvailableServicesResult,
   RegisterBatchSnapshot,
@@ -132,6 +144,30 @@ interface ApiKeyPayload {
   upstreamBaseUrl?: string | null;
   staticHeadersJson?: string | null;
   expiresAt?: number | null;
+}
+
+interface AggregateApiPayload {
+  providerType?: string | null;
+  supplierName?: string | null;
+  sort?: number | null;
+  status?: string | null;
+  url?: string | null;
+  key?: string | null;
+  authType?: string | null;
+  authCustomEnabled?: boolean | null;
+  authParams?: Record<string, unknown> | null;
+  actionCustomEnabled?: boolean | null;
+  action?: string | null;
+  username?: string | null;
+  password?: string | null;
+}
+
+export interface ManagedModelPayload {
+  previousSlug?: string | null;
+  sourceKind?: string | null;
+  userEdited?: boolean | null;
+  sortIndex?: number | null;
+  model: ManagedModelInfo;
 }
 
 interface RegisterStartPayload {
@@ -2003,6 +2039,96 @@ export const accountClient = {
     const result = await invoke<unknown>("service_apikey_usage_stats", withAddr());
     return normalizeApiKeyUsageStats(result);
   },
+  async listAggregateApis(): Promise<AggregateApi[]> {
+    const result = await invoke<unknown>("service_aggregate_api_list", withAddr());
+    return normalizeAggregateApiList(result);
+  },
+  async createAggregateApi(
+    params: AggregateApiPayload
+  ): Promise<AggregateApiCreateResult> {
+    const result = await invoke<unknown>(
+      "service_aggregate_api_create",
+      withAddr({
+        providerType: params.providerType || null,
+        supplierName: params.supplierName || null,
+        sort: typeof params.sort === "number" ? params.sort : null,
+        status: params.status || null,
+        url: params.url || null,
+        key: params.key || null,
+        authType: params.authType || null,
+        authCustomEnabled: params.authCustomEnabled ?? null,
+        authParams: params.authParams || null,
+        actionCustomEnabled: params.actionCustomEnabled ?? null,
+        action: params.action || null,
+        username: params.username || null,
+        password: params.password || null,
+      })
+    );
+    return normalizeAggregateApiCreateResult(result);
+  },
+  updateAggregateApi: (apiId: string, params: AggregateApiPayload) =>
+    invoke(
+      "service_aggregate_api_update",
+      withAddr({
+        id: apiId,
+        providerType: params.providerType || null,
+        supplierName: params.supplierName || null,
+        sort: typeof params.sort === "number" ? params.sort : null,
+        status: params.status || null,
+        url: params.url || null,
+        key: params.key || null,
+        authType: params.authType || null,
+        authCustomEnabled: params.authCustomEnabled ?? null,
+        authParams: params.authParams || null,
+        actionCustomEnabled: params.actionCustomEnabled ?? null,
+        action: params.action || null,
+        username: params.username || null,
+        password: params.password || null,
+      })
+    ),
+  deleteAggregateApi: (apiId: string) =>
+    invoke("service_aggregate_api_delete", withAddr({ id: apiId })),
+  async readAggregateApiSecret(
+    apiId: string
+  ): Promise<AggregateApiSecretResult> {
+    const result = await invoke<unknown>(
+      "service_aggregate_api_read_secret",
+      withAddr({ id: apiId })
+    );
+    return normalizeAggregateApiSecretResult(result);
+  },
+  async testAggregateApiConnection(
+    apiId: string
+  ): Promise<AggregateApiTestResult> {
+    const result = await invoke<unknown>(
+      "service_aggregate_api_test_connection",
+      withAddr({ id: apiId })
+    );
+    return normalizeAggregateApiTestResult(result);
+  },
+  async listManagedModels(refreshRemote?: boolean): Promise<ManagedModelCatalog> {
+    const result = await invoke<unknown>(
+      "service_model_catalog_list",
+      withAddr({ refreshRemote: refreshRemote ?? false })
+    );
+    return normalizeManagedModelCatalog(result);
+  },
+  async saveManagedModel(params: ManagedModelPayload): Promise<ManagedModelInfo> {
+    const result = await invoke<unknown>(
+      "service_model_catalog_upsert",
+      withAddr({
+        previousSlug: params.previousSlug || null,
+        ...params.model,
+      })
+    );
+    const normalized = normalizeManagedModelInfo(result);
+    if (!normalized) {
+      throw new Error("模型保存结果无效");
+    }
+    return normalized;
+  },
+  deleteManagedModel: (slug: string) =>
+    invoke("service_model_catalog_delete", withAddr({ slug })),
   async getApiKeyRateLimit(keyId: string): Promise<ApiKeyRateLimit> {
     const result = await invoke<unknown>(
       "service_apikey_rate_limit_get",

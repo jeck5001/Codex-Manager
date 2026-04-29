@@ -5,6 +5,19 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * 函数 `Tabs`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function Tabs({
   className,
   orientation = "horizontal",
@@ -39,6 +52,19 @@ const tabsListVariants = cva(
   }
 )
 
+/**
+ * 函数 `TabsList`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function TabsList({
   className,
   variant = "default",
@@ -54,6 +80,19 @@ function TabsList({
   )
 }
 
+/**
+ * 函数 `TabsTrigger`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
   return (
     <TabsPrimitive.Tab
@@ -67,6 +106,19 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
   )
 }
 
+/**
+ * 函数 `TabsContent`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
   return (
     <TabsPrimitive.Panel

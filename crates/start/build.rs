@@ -1,3 +1,14 @@
+/// 函数 `main`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[cfg(windows)]
 fn main() {
     let manifest_dir = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -15,5 +26,16 @@ fn main() {
         .expect("failed to compile Windows resources (icon)");
 }
 
+/// 函数 `main`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[cfg(not(windows))]
 fn main() {}

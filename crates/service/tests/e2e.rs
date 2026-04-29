@@ -5,29 +5,21 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 
-struct EnvGuard {
-    key: &'static str,
-    original: Option<std::ffi::OsString>,
-}
+mod support;
+use support::{test_env_guard, EnvGuard};
 
-impl EnvGuard {
-    fn set(key: &'static str, value: &str) -> Self {
-        let original = std::env::var_os(key);
-        std::env::set_var(key, value);
-        Self { key, original }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        if let Some(val) = &self.original {
-            std::env::set_var(self.key, val);
-        } else {
-            std::env::remove_var(self.key);
-        }
-    }
-}
-
+/// 函数 `post_rpc`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - addr: 参数 addr
+/// - body: 参数 body
+///
+/// # 返回
+/// 返回函数执行结果
 fn post_rpc(addr: &str, body: &str) -> String {
     let mut stream = TcpStream::connect(addr).expect("connect server");
     let token = codexmanager_service::rpc_auth_token().to_string();
@@ -43,8 +35,20 @@ fn post_rpc(addr: &str, body: &str) -> String {
     buf
 }
 
+/// 函数 `e2e_initialize_writes_event`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn e2e_initialize_writes_event() {
+    let _guard = test_env_guard();
     let mut dir = std::env::temp_dir();
     dir.push(format!("codexmanager-e2e-{}", std::process::id()));
     let _ = fs::create_dir_all(&dir);
@@ -54,9 +58,10 @@ fn e2e_initialize_writes_event() {
 
     let server = codexmanager_service::start_one_shot_server().expect("start server");
     let req = JsonRpcRequest {
-        id: 1,
+        id: 1.into(),
         method: "initialize".to_string(),
         params: None,
+        trace: None,
     };
     let json = serde_json::to_string(&req).expect("serialize");
     let buf = post_rpc(&server.addr, &json);

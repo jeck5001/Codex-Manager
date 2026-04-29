@@ -2,13 +2,15 @@
 
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { useI18n } from "@/lib/i18n/provider";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -21,16 +23,30 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
 }
 
+/**
+ * 函数 `ConfirmDialog`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - params: 参数 params
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function ConfirmDialog({
   open,
   onOpenChange,
   title,
   description,
-  confirmText = "确定",
-  cancelText = "取消",
+  confirmText,
+  cancelText,
   confirmVariant = "default",
   onConfirm,
 }: ConfirmDialogProps) {
+  const { t } = useI18n();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -43,9 +59,12 @@ export function ConfirmDialog({
         </DialogHeader>
 
         <DialogFooter className="gap-2 sm:gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {cancelText}
-          </Button>
+          <DialogClose
+            className={buttonVariants({ variant: "outline" })}
+            type="button"
+          >
+            {cancelText || t("取消")}
+          </DialogClose>
           <Button
             variant={confirmVariant}
             onClick={() => {
@@ -53,7 +72,7 @@ export function ConfirmDialog({
               onOpenChange(false);
             }}
           >
-            {confirmText}
+            {confirmText || t("确定")}
           </Button>
         </DialogFooter>
       </DialogContent>

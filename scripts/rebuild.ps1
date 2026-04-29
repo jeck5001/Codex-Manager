@@ -11,7 +11,6 @@ param(
   [string]$WorkflowFile = "release-all.yml",
   [string]$GitRef,
   [string]$ReleaseTag,
-  [switch]$NoVerify,
   [ValidateSet("auto", "true", "false")]
   [string]$Prerelease = "auto",
   [bool]$DownloadArtifacts = $true,
@@ -47,11 +46,37 @@ $legacyPortableMarker = Join-Path $portableRoot ".codexmanager-portable"
 $appExe = Join-Path $tauriDir "target\\release\\$appName.exe"
 $artifactsRoot = if ($ArtifactsDir) { $ArtifactsDir } else { Join-Path $root "artifacts" }
 
+<#
+函数 `Write-Step`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- Message: 参数 Message
+
+# 返回
+返回函数执行结果
+#>
 function Write-Step {
   param([string]$Message)
   Write-Output $Message
 }
 
+<#
+函数 `Remove-Dir`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- Path: 参数 Path
+
+# 返回
+返回函数执行结果
+#>
 function Remove-Dir {
   param([string]$Path)
   if (-not (Test-Path $Path)) {
@@ -68,6 +93,20 @@ function Remove-Dir {
   }
 }
 
+<#
+函数 `Run-Cargo`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- CommandLine: 参数 CommandLine
+- Action: 参数 Action
+
+# 返回
+返回函数执行结果
+#>
 function Run-Cargo {
   param([string]$CommandLine, [scriptblock]$Action)
   if ($DryRun) {
@@ -80,6 +119,19 @@ function Run-Cargo {
   }
 }
 
+<#
+函数 `Get-GitHubRepoInfo`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Get-GitHubRepoInfo {
   $remote = (& git remote get-url origin 2>$null) -join ""
   if ([string]::IsNullOrWhiteSpace($remote)) {
@@ -94,6 +146,19 @@ function Get-GitHubRepoInfo {
   throw "origin is not a GitHub repository: $remote"
 }
 
+<#
+函数 `Resolve-GitHubToken`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Resolve-GitHubToken {
   if (-not [string]::IsNullOrWhiteSpace($GithubToken)) {
     return $GithubToken.Trim()
@@ -107,6 +172,19 @@ function Resolve-GitHubToken {
   throw "GitHub token required for -AllPlatforms. Pass -GithubToken or set GITHUB_TOKEN."
 }
 
+<#
+函数 `Invoke-GitHubApi`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Invoke-GitHubApi {
   param(
     [ValidateSet("GET", "POST")]
@@ -128,6 +206,21 @@ function Invoke-GitHubApi {
   return Invoke-RestMethod -Method Post -Uri $Uri -Headers $headers -ContentType "application/json" -Body $json
 }
 
+<#
+函数 `Resolve-WorkflowDefinition`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+- Repo: 参数 Repo
+- Token: 参数 Token
+- WorkflowFile: 参数 WorkflowFile
+
+# 返回
+返回函数执行结果
+#>
 function Resolve-WorkflowDefinition {
   param(
     [hashtable]$Repo,
@@ -157,6 +250,19 @@ function Resolve-WorkflowDefinition {
   }
 }
 
+<#
+函数 `Invoke-LocalWindowsBuild`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Invoke-LocalWindowsBuild {
   if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
     throw "cargo not found in PATH"
@@ -211,6 +317,19 @@ function Invoke-LocalWindowsBuild {
   }
 }
 
+<#
+函数 `Invoke-AllPlatformBuild`
+
+作者: gaohongshun
+
+时间: 2026-04-02
+
+# 参数
+无
+
+# 返回
+返回函数执行结果
+#>
 function Invoke-AllPlatformBuild {
   $repo = Get-GitHubRepoInfo
   $token = Resolve-GitHubToken
@@ -253,21 +372,19 @@ function Invoke-AllPlatformBuild {
 
   $dispatchUri = "https://api.github.com/repos/$($repo.owner)/$($repo.repo)/actions/workflows/$WorkflowFile/dispatches"
   $runsUri = "https://api.github.com/repos/$($repo.owner)/$($repo.repo)/actions/workflows/$WorkflowFile/runs?event=workflow_dispatch&per_page=50"
-  $runVerifyInput = if ($NoVerify) { "false" } else { "true" }
   $prereleaseInput = $Prerelease.ToLowerInvariant()
   $dispatchBody = @{
     ref = $GitRef
     inputs = @{
-      tag         = $ReleaseTag
-      ref         = $GitRef
-      run_verify  = $runVerifyInput
-      prerelease  = $prereleaseInput
+      tag        = $ReleaseTag
+      ref        = $GitRef
+      prerelease = $prereleaseInput
     }
   }
 
   if ($DryRun) {
     Write-Step "DRY RUN: using workflow .github/workflows/$WorkflowFile"
-    Write-Step "DRY RUN: dispatch workflow $WorkflowFile on ref=$GitRef tag=$ReleaseTag run_verify=$runVerifyInput prerelease=$prereleaseInput"
+    Write-Step "DRY RUN: dispatch workflow $WorkflowFile on ref=$GitRef tag=$ReleaseTag prerelease=$prereleaseInput"
     Write-Step "DRY RUN: resolved target sha $resolvedSha"
     Write-Step "DRY RUN: POST $dispatchUri"
     Write-Step "DRY RUN: payload $($dispatchBody | ConvertTo-Json -Depth 10 -Compress)"
@@ -279,7 +396,7 @@ function Invoke-AllPlatformBuild {
 
   $workflow = Resolve-WorkflowDefinition -Repo $repo -Token $token -WorkflowFile $WorkflowFile
   Write-Step "using workflow: $($workflow.path)"
-  Write-Step "dispatching workflow: $WorkflowFile (ref=$GitRef tag=$ReleaseTag run_verify=$runVerifyInput prerelease=$prereleaseInput)"
+  Write-Step "dispatching workflow: $WorkflowFile (ref=$GitRef tag=$ReleaseTag prerelease=$prereleaseInput)"
   Invoke-GitHubApi -Method POST -Uri $dispatchUri -Token $token -Body $dispatchBody | Out-Null
 
   $deadline = (Get-Date).ToUniversalTime().AddMinutes($TimeoutMin)

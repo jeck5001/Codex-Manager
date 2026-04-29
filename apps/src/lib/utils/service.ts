@@ -4,12 +4,38 @@ import { ServiceInitializationResult } from "@/types";
 
 const LOOPBACK_PROXY_HINT = "若开启全局代理，请将 localhost/127.0.0.1/::1 设为直连";
 
+/**
+ * 函数 `asRecord`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 function asRecord(payload: unknown): Record<string, unknown> {
   return payload && typeof payload === "object" && !Array.isArray(payload)
     ? (payload as Record<string, unknown>)
     : {};
 }
 
+/**
+ * 函数 `normalizeServiceAddr`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - raw: 参数 raw
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function normalizeServiceAddr(raw: string): string {
   const trimmed = String(raw || "").trim();
   if (!trimmed) {
@@ -37,8 +63,49 @@ export function normalizeServiceAddr(raw: string): string {
   return value;
 }
 
+/**
+ * 函数 `readInitializeResult`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function readInitializeResult(payload: unknown): ServiceInitializationResult {
-  const source = asRecord(payload);
+  const outer = asRecord(payload);
+  const source =
+    outer.result && typeof outer.result === "object" && !Array.isArray(outer.result)
+      ? asRecord(outer.result)
+      : outer;
+  const userAgent =
+    typeof source.userAgent === "string"
+      ? source.userAgent
+      : typeof source.user_agent === "string"
+        ? source.user_agent
+        : "";
+  const codexHome =
+    typeof source.codexHome === "string"
+      ? source.codexHome
+      : typeof source.codex_home === "string"
+        ? source.codex_home
+        : "";
+  const platformFamily =
+    typeof source.platformFamily === "string"
+      ? source.platformFamily
+      : typeof source.platform_family === "string"
+        ? source.platform_family
+        : "";
+  const platformOs =
+    typeof source.platformOs === "string"
+      ? source.platformOs
+      : typeof source.platform_os === "string"
+        ? source.platform_os
+        : "";
   const serverName =
     typeof source.serverName === "string"
       ? source.serverName
@@ -46,19 +113,40 @@ export function readInitializeResult(payload: unknown): ServiceInitializationRes
         ? source.server_name
         : "";
   const version = typeof source.version === "string" ? source.version : "";
-  const userAgent =
-    typeof source.userAgent === "string"
-      ? source.userAgent
-      : typeof source.user_agent === "string"
-        ? source.user_agent
-        : "";
-  return { serverName, version, userAgent };
+  return { userAgent, codexHome, platformFamily, platformOs, serverName, version };
 }
 
+/**
+ * 函数 `isExpectedInitializeResult`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - payload: 参数 payload
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function isExpectedInitializeResult(payload: unknown): boolean {
-  return readInitializeResult(payload).serverName === "codexmanager-service";
+  const result = readInitializeResult(payload);
+  return result.userAgent.includes("codex_cli_rs/") && result.codexHome.length > 0;
 }
 
+/**
+ * 函数 `formatServiceError`
+ *
+ * 作者: gaohongshun
+ *
+ * 时间: 2026-04-02
+ *
+ * # 参数
+ * - error: 参数 error
+ *
+ * # 返回
+ * 返回函数执行结果
+ */
 export function formatServiceError(error: unknown): string {
   const raw =
     error && typeof error === "object" && "message" in error
@@ -87,7 +175,7 @@ export function formatServiceError(error: unknown): string {
   if (lower.includes("port is in use") || lower.includes("unexpected service responded")) {
     return `端口已被占用或响应来源不是 CodexManager 服务（${LOOPBACK_PROXY_HINT}）`;
   }
-  if (lower.includes("missing server_name")) {
+  if (lower.includes("missing user_agent") || lower.includes("missing useragent")) {
     return `响应缺少服务标识（疑似非 CodexManager 服务，${LOOPBACK_PROXY_HINT}）`;
   }
   if (

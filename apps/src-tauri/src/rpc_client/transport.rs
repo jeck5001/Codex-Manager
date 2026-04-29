@@ -11,6 +11,18 @@ const RPC_DEFAULT_IO_TIMEOUT: Duration = Duration::from_secs(10);
 const RPC_BULK_USAGE_REFRESH_IO_TIMEOUT: Duration = Duration::from_secs(600);
 const RPC_OPERATOR: &str = "desktop-app";
 
+/// 函数 `rpc_io_timeout`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - method: 参数 method
+/// - params: 参数 params
+///
+/// # 返回
+/// 返回函数执行结果
 fn rpc_io_timeout(method: &str, params: Option<&serde_json::Value>) -> Duration {
     if method == "account/usage/refresh"
         && params
@@ -26,6 +38,20 @@ fn rpc_io_timeout(method: &str, params: Option<&serde_json::Value>) -> Duration 
     RPC_DEFAULT_IO_TIMEOUT
 }
 
+/// 函数 `rpc_call_on_socket`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - method: 参数 method
+/// - addr: 参数 addr
+/// - sock: 参数 sock
+/// - params: 参数 params
+///
+/// # 返回
+/// 返回函数执行结果
 fn rpc_call_on_socket(
     method: &str,
     addr: &str,
@@ -48,9 +74,10 @@ fn rpc_call_on_socket(
     let _ = stream.set_write_timeout(Some(io_timeout));
 
     let req = JsonRpcRequest {
-        id: 1,
+        id: 1.into(),
         method: method.to_string(),
         params,
+        trace: None,
     };
     let json = serde_json::to_string(&req).map_err(|e| e.to_string())?;
     let rpc_token = codexmanager_service::rpc_auth_token();
@@ -117,6 +144,17 @@ fn rpc_call_on_socket(
     Ok(v)
 }
 
+/// 函数 `rpc_call_with_sockets`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn rpc_call_with_sockets(
     method: &str,
     addr: &str,
@@ -144,6 +182,17 @@ pub(crate) fn rpc_call_with_sockets(
     Err(last_err)
 }
 
+/// 函数 `rpc_call`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn rpc_call(
     method: &str,
     addr: Option<String>,
@@ -158,12 +207,34 @@ pub(crate) fn rpc_call(
 mod tests {
     use super::{rpc_io_timeout, RPC_BULK_USAGE_REFRESH_IO_TIMEOUT, RPC_DEFAULT_IO_TIMEOUT};
 
+    /// 函数 `bulk_usage_refresh_uses_extended_timeout`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn bulk_usage_refresh_uses_extended_timeout() {
         let timeout = rpc_io_timeout("account/usage/refresh", None);
         assert_eq!(timeout, RPC_BULK_USAGE_REFRESH_IO_TIMEOUT);
     }
 
+    /// 函数 `single_usage_refresh_keeps_default_timeout`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn single_usage_refresh_keeps_default_timeout() {
         let timeout = rpc_io_timeout(
@@ -173,6 +244,17 @@ mod tests {
         assert_eq!(timeout, RPC_DEFAULT_IO_TIMEOUT);
     }
 
+    /// 函数 `unrelated_rpc_keeps_default_timeout`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn unrelated_rpc_keeps_default_timeout() {
         let timeout = rpc_io_timeout("account/list", None);

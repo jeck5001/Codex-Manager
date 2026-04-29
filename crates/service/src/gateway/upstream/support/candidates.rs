@@ -6,14 +6,51 @@ pub(in super::super) enum CandidateSkipReason {
     Inflight,
 }
 
+/// 函数 `prepare_gateway_candidates`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn prepare_gateway_candidates(
     storage: &Storage,
     _request_model: Option<&str>,
+    account_plan_filter: Option<&str>,
 ) -> Result<Vec<(Account, Token)>, String> {
     // 中文注释：保持账号原始顺序（按账户排序字段）作为候选顺序，失败时再依次切下一个。
-    super::super::super::collect_gateway_candidates(storage)
+    let mut candidates = super::super::super::collect_gateway_candidates(storage)?;
+    let normalized_filter = account_plan_filter
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("all"));
+    if let Some(plan_filter) = normalized_filter {
+        candidates.retain(|(account, token)| {
+            crate::account_plan::account_matches_plan_filter(
+                storage,
+                account.id.as_str(),
+                token,
+                Some(plan_filter),
+            )
+        });
+    }
+    Ok(candidates)
 }
 
+/// 函数 `free_account_model_override`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn free_account_model_override(
     storage: &Storage,
     account: &Account,
@@ -30,6 +67,46 @@ pub(in super::super) fn free_account_model_override(
     }
 }
 
+/// 函数 `allow_openai_fallback_for_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-03
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - account: 参数 account
+/// - token: 参数 token
+///
+/// # 返回
+/// 返回函数执行结果
+pub(in super::super) fn allow_openai_fallback_for_account(
+    storage: &Storage,
+    account: &Account,
+    token: &Token,
+) -> bool {
+    let snapshot = storage
+        .latest_usage_snapshot_for_account(account.id.as_str())
+        .ok()
+        .flatten();
+    let Some(plan) = crate::account_plan::resolve_account_plan(Some(token), snapshot.as_ref())
+    else {
+        return false;
+    };
+    matches!(plan.normalized.as_str(), "free" | "go" | "plus" | "pro")
+}
+
+/// 函数 `candidate_skip_reason_for_proxy`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - in super: 参数 in super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(in super::super) fn candidate_skip_reason_for_proxy(
     account_id: &str,
     idx: usize,
@@ -38,7 +115,9 @@ pub(in super::super) fn candidate_skip_reason_for_proxy(
 ) -> Option<CandidateSkipReason> {
     let has_more_candidates = idx + 1 < candidate_count;
     if super::super::super::is_account_in_cooldown(account_id) && has_more_candidates {
-        super::super::super::record_gateway_failover_attempt();
+        super::super::super::record_gateway_candidate_skip(
+            super::super::super::GatewayCandidateSkipReason::Cooldown,
+        );
         return Some(CandidateSkipReason::Cooldown);
     }
 
@@ -47,7 +126,9 @@ pub(in super::super) fn candidate_skip_reason_for_proxy(
         && has_more_candidates
     {
         // 中文注释：并发上限是软约束，最后一个候选仍要尝试，避免把可恢复抖动直接放大成全局不可用。
-        super::super::super::record_gateway_failover_attempt();
+        super::super::super::record_gateway_candidate_skip(
+            super::super::super::GatewayCandidateSkipReason::Inflight,
+        );
         return Some(CandidateSkipReason::Inflight);
     }
 
@@ -55,11 +136,26 @@ pub(in super::super) fn candidate_skip_reason_for_proxy(
 }
 #[cfg(test)]
 mod tests {
-    use super::free_account_model_override;
+    use super::{
+        allow_openai_fallback_for_account, candidate_skip_reason_for_proxy,
+        free_account_model_override, CandidateSkipReason,
+    };
     use codexmanager_core::storage::{now_ts, Account, Storage, Token, UsageSnapshotRecord};
 
+    /// 函数 `free_account_model_override_uses_configured_model_for_free_account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn free_account_model_override_uses_configured_model_for_free_account() {
+        let _guard = crate::test_env_guard();
         let storage = Storage::open_in_memory().expect("open");
         storage.init().expect("init");
         let now = now_ts();
@@ -122,8 +218,20 @@ mod tests {
         assert_eq!(actual.as_deref(), Some("gpt-5.2"));
     }
 
+    /// 函数 `free_account_model_override_accepts_single_window_weekly_account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn free_account_model_override_accepts_single_window_weekly_account() {
+        let _guard = crate::test_env_guard();
         let storage = Storage::open_in_memory().expect("open");
         storage.init().expect("init");
         let now = now_ts();
@@ -186,8 +294,20 @@ mod tests {
         assert_eq!(actual.as_deref(), Some("gpt-5.2"));
     }
 
+    /// 函数 `free_account_model_override_skips_rewrite_when_configured_auto`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
     #[test]
     fn free_account_model_override_skips_rewrite_when_configured_auto() {
+        let _guard = crate::test_env_guard();
         let storage = Storage::open_in_memory().expect("open");
         storage.init().expect("init");
         let now = now_ts();
@@ -248,5 +368,108 @@ mod tests {
         let _ = crate::gateway::set_free_account_max_model(&original);
 
         assert_eq!(actual, None);
+    }
+
+    /// 函数 `allow_openai_fallback_for_account_accepts_individual_plan_tiers`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-03
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
+    #[test]
+    fn allow_openai_fallback_for_account_accepts_individual_plan_tiers() {
+        let _guard = crate::test_env_guard();
+        let storage = Storage::open_in_memory().expect("open");
+        storage.init().expect("init");
+        let now = now_ts();
+        let account = Account {
+            id: "acc-pro".to_string(),
+            label: "acc-pro".to_string(),
+            issuer: "issuer".to_string(),
+            chatgpt_account_id: Some("org-pro".to_string()),
+            workspace_id: Some("org-pro".to_string()),
+            group_name: None,
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+        storage.insert_account(&account).expect("insert account");
+        let token = Token {
+            account_id: "acc-pro".to_string(),
+            id_token: "header.payload.sig".to_string(),
+            access_token: {
+                let header = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0";
+                let payload = "eyJzdWIiOiJhY2MtcHJvIiwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfcGxhbl90eXBlIjoicHJvIn19";
+                format!("{header}.{payload}.sig")
+            },
+            refresh_token: "refresh".to_string(),
+            api_key_access_token: None,
+            last_refresh: now,
+        };
+
+        assert!(allow_openai_fallback_for_account(
+            &storage, &account, &token
+        ));
+    }
+
+    /// 函数 `allow_openai_fallback_for_account_rejects_workspace_plans`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-03
+    ///
+    /// # 参数
+    /// 无
+    ///
+    /// # 返回
+    /// 无
+    #[test]
+    fn allow_openai_fallback_for_account_rejects_workspace_plans() {
+        let _guard = crate::test_env_guard();
+        let storage = Storage::open_in_memory().expect("open");
+        storage.init().expect("init");
+        let now = now_ts();
+        let account = Account {
+            id: "acc-team".to_string(),
+            label: "acc-team".to_string(),
+            issuer: "issuer".to_string(),
+            chatgpt_account_id: Some("org-team".to_string()),
+            workspace_id: Some("org-team".to_string()),
+            group_name: Some("team".to_string()),
+            sort: 0,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+        storage.insert_account(&account).expect("insert account");
+        let token = Token {
+            account_id: "acc-team".to_string(),
+            id_token: "header.payload.sig".to_string(),
+            access_token: {
+                let header = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0";
+                let payload = "eyJzdWIiOiJhY2MtdGVhbSIsImh0dHBzOi8vYXBpLm9wZW5haS5jb20vYXV0aCI6eyJjaGF0Z3B0X3BsYW5fdHlwZSI6InRlYW0ifX0";
+                format!("{header}.{payload}.sig")
+            },
+            refresh_token: "refresh".to_string(),
+            api_key_access_token: None,
+            last_refresh: now,
+        };
+
+        assert!(!allow_openai_fallback_for_account(
+            &storage, &account, &token
+        ));
+    }
+
+    #[test]
+    fn candidate_skip_reason_for_proxy_allows_failover_when_head_account_is_inflight_limited() {
+        let _guard = crate::gateway::acquire_account_inflight("acc-preferred");
+        let actual = candidate_skip_reason_for_proxy("acc-preferred", 0, 2, 1);
+        assert_eq!(actual, Some(CandidateSkipReason::Inflight));
     }
 }

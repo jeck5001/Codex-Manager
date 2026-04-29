@@ -3,6 +3,18 @@ use rusqlite::{Result, Row};
 use super::{Storage, UsageSnapshotRecord};
 
 impl Storage {
+    /// 函数 `insert_usage_snapshot`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - snap: 参数 snap
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn insert_usage_snapshot(&self, snap: &UsageSnapshotRecord) -> Result<()> {
         self.conn.execute(
             "INSERT INTO usage_snapshots (account_id, used_percent, window_minutes, resets_at, secondary_used_percent, secondary_window_minutes, secondary_resets_at, credits_json, captured_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -21,6 +33,19 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `prune_usage_snapshots_for_account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    /// - retain: 参数 retain
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn prune_usage_snapshots_for_account(
         &self,
         account_id: &str,
@@ -43,6 +68,18 @@ impl Storage {
         )
     }
 
+    /// 函数 `usage_snapshot_count_for_account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn usage_snapshot_count_for_account(&self, account_id: &str) -> Result<i64> {
         self.conn.query_row(
             "SELECT COUNT(1) FROM usage_snapshots WHERE account_id = ?1",
@@ -51,6 +88,17 @@ impl Storage {
         )
     }
 
+    /// 函数 `latest_usage_snapshot`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn latest_usage_snapshot(&self) -> Result<Option<UsageSnapshotRecord>> {
         let mut stmt = self.conn.prepare(
             "SELECT account_id, used_percent, window_minutes, resets_at, secondary_used_percent, secondary_window_minutes, secondary_resets_at, credits_json, captured_at FROM usage_snapshots ORDER BY captured_at DESC, id DESC LIMIT 1",
@@ -63,6 +111,18 @@ impl Storage {
         }
     }
 
+    /// 函数 `latest_usage_snapshot_for_account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - account_id: 参数 account_id
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn latest_usage_snapshot_for_account(
         &self,
         account_id: &str,
@@ -82,6 +142,17 @@ impl Storage {
         }
     }
 
+    /// 函数 `latest_usage_snapshots_by_account`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn latest_usage_snapshots_by_account(&self) -> Result<Vec<UsageSnapshotRecord>> {
         // 中文注释：窗口函数 + 复合索引可稳定处理“同 captured_at 并发写入”场景；
         // 不这样做会依赖复杂子查询拼接，后续维护和优化都更难。
@@ -126,6 +197,17 @@ impl Storage {
         Ok(out)
     }
 
+    /// 函数 `ensure_usage_secondary_columns`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - super: 参数 super
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub(super) fn ensure_usage_secondary_columns(&self) -> Result<()> {
         self.ensure_column("usage_snapshots", "secondary_used_percent", "REAL")?;
         self.ensure_column("usage_snapshots", "secondary_window_minutes", "INTEGER")?;
@@ -134,6 +216,17 @@ impl Storage {
     }
 }
 
+/// 函数 `map_usage_snapshot_row`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - row: 参数 row
+///
+/// # 返回
+/// 返回函数执行结果
 fn map_usage_snapshot_row(row: &Row<'_>) -> Result<UsageSnapshotRecord> {
     Ok(UsageSnapshotRecord {
         account_id: row.get(0)?,

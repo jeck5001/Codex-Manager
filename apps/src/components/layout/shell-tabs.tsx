@@ -1,0 +1,72 @@
+"use client";
+
+import { X } from "lucide-react";
+import { getTopLevelRouteLabel } from "@/lib/app-shell/top-level-routes";
+import { useAppStore } from "@/lib/store/useAppStore";
+import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/provider";
+
+const ROOT_ROUTE_PATH = "/";
+
+export function ShellTabs() {
+  const { t } = useI18n();
+  const currentShellPath = useAppStore((state) => state.currentShellPath);
+  const openShellTabs = useAppStore((state) => state.openShellTabs);
+  const navigateShellPath = useAppStore((state) => state.navigateShellPath);
+  const closeShellTab = useAppStore((state) => state.closeShellTab);
+
+  if (openShellTabs.length <= 1) {
+    return null;
+  }
+
+  return (
+    <div className="sticky top-0 z-10 -mx-6 -mt-6 border-b bg-background/80 px-6 py-3 backdrop-blur-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        {openShellTabs.map((path) => {
+          const isActive = path === currentShellPath;
+          const label = t(getTopLevelRouteLabel(path));
+          const canClose = path !== ROOT_ROUTE_PATH;
+
+          return (
+            <div
+              key={path}
+              className={cn(
+                "group flex items-center rounded-full border px-3 py-1.5 text-sm transition-colors duration-200",
+                isActive
+                  ? "border-primary/40 bg-primary/10 text-foreground shadow-sm"
+                  : "border-border/70 bg-card/60 text-muted-foreground hover:bg-accent/70 hover:text-foreground",
+              )}
+            >
+              <button
+                type="button"
+                className="min-w-0 truncate"
+                onClick={() => navigateShellPath(path)}
+              >
+                {label}
+              </button>
+
+              {canClose ? (
+                <button
+                  type="button"
+                  aria-label={t("关闭 {label}", { label })}
+                  className={cn(
+                    "ml-2 inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors duration-150",
+                    isActive
+                      ? "text-foreground/70 hover:bg-primary/15 hover:text-foreground"
+                      : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
+                  )}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    closeShellTab(path);
+                  }}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

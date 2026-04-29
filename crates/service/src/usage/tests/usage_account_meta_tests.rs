@@ -1,10 +1,23 @@
 use super::{
     build_workspace_map, build_workspace_map_from_accounts, clean_header_value,
-    patch_account_meta_cached, resolve_workspace_id_for_account,
+    derive_account_meta, patch_account_meta_cached, resolve_workspace_id_for_account,
 };
-use codexmanager_core::storage::{now_ts, Account, Storage};
+use codexmanager_core::storage::{now_ts, Account, Storage, Token};
 use std::collections::HashMap;
 
+/// 函数 `build_account`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - id: 参数 id
+/// - workspace_id: 参数 workspace_id
+/// - chatgpt_account_id: 参数 chatgpt_account_id
+///
+/// # 返回
+/// 返回函数执行结果
 fn build_account(
     id: &str,
     workspace_id: Option<&str>,
@@ -24,6 +37,17 @@ fn build_account(
     }
 }
 
+/// 函数 `clean_header_value_trims_and_drops_empty`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn clean_header_value_trims_and_drops_empty() {
     assert_eq!(
@@ -34,6 +58,17 @@ fn clean_header_value_trims_and_drops_empty() {
     assert_eq!(clean_header_value(None), None);
 }
 
+/// 函数 `resolve_workspace_prefers_workspace_then_chatgpt`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn resolve_workspace_prefers_workspace_then_chatgpt() {
     let storage = Storage::open_in_memory().expect("open");
@@ -45,6 +80,17 @@ fn resolve_workspace_prefers_workspace_then_chatgpt() {
     assert_eq!(resolved, Some("ws-primary".to_string()));
 }
 
+/// 函数 `build_workspace_map_falls_back_to_chatgpt_account_id`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn build_workspace_map_falls_back_to_chatgpt_account_id() {
     let storage = Storage::open_in_memory().expect("open");
@@ -60,6 +106,17 @@ fn build_workspace_map_falls_back_to_chatgpt_account_id() {
     );
 }
 
+/// 函数 `build_workspace_map_from_accounts_uses_preloaded_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn build_workspace_map_from_accounts_uses_preloaded_snapshot() {
     let accounts = vec![
@@ -74,6 +131,17 @@ fn build_workspace_map_from_accounts_uses_preloaded_snapshot() {
     );
 }
 
+/// 函数 `patch_account_meta_cached_updates_preloaded_account_without_lookup`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn patch_account_meta_cached_updates_preloaded_account_without_lookup() {
     let storage = Storage::open_in_memory().expect("open");
@@ -99,6 +167,17 @@ fn patch_account_meta_cached_updates_preloaded_account_without_lookup() {
     assert_eq!(updated.workspace_id.as_deref(), Some("workspace-5"));
 }
 
+/// 函数 `patch_account_meta_cached_replaces_subject_style_scope_values`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn patch_account_meta_cached_replaces_subject_style_scope_values() {
     let storage = Storage::open_in_memory().expect("open");
@@ -122,4 +201,100 @@ fn patch_account_meta_cached_replaces_subject_style_scope_values() {
         .expect("account");
     assert_eq!(updated.chatgpt_account_id.as_deref(), Some("org-correct"));
     assert_eq!(updated.workspace_id.as_deref(), Some("ws-correct"));
+}
+
+/// 函数 `patch_account_meta_cached_overrides_stale_team_scope_with_latest_token_scope`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-03
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn patch_account_meta_cached_overrides_stale_team_scope_with_latest_token_scope() {
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+    let account = build_account("acc-7", Some("org-team"), Some("org-team"));
+    storage.insert_account(&account).expect("insert");
+    let mut account_map = HashMap::new();
+    account_map.insert(account.id.clone(), account);
+
+    patch_account_meta_cached(
+        &storage,
+        &mut account_map,
+        "acc-7",
+        Some("org-free".to_string()),
+        Some("org-free".to_string()),
+    );
+
+    let updated = storage
+        .find_account_by_id("acc-7")
+        .expect("find")
+        .expect("account");
+    assert_eq!(updated.chatgpt_account_id.as_deref(), Some("org-free"));
+    assert_eq!(updated.workspace_id.as_deref(), Some("org-free"));
+}
+
+/// 函数 `resolve_workspace_id_for_account_filters_storage_style_scope_suffix`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-17
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn resolve_workspace_id_for_account_filters_storage_style_scope_suffix() {
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+    let composite =
+        "google-oauth2|105671307665841419748::cgpt=ed08d56a-c038-4322-b325-53f504c0c88c|ws=org-AP6ypcMi84Thfueli6EU3B4m";
+    storage
+        .insert_account(&build_account("acc-8", Some(composite), Some(composite)))
+        .expect("insert");
+
+    let resolved = resolve_workspace_id_for_account(&storage, "acc-8");
+
+    assert_eq!(resolved, Some("org-AP6ypcMi84Thfueli6EU3B4m".to_string()));
+}
+
+/// 函数 `derive_account_meta_filters_storage_style_scope_suffix_from_token_claims`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-17
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn derive_account_meta_filters_storage_style_scope_suffix_from_token_claims() {
+    let token = Token {
+        account_id: "acc-9".to_string(),
+        id_token: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyLTEiLCJ3b3Jrc3BhY2VfaWQiOiJnb29nbGUtb2F1dGgyfDEwNTY3MTMwNzY2NTg0MTQxOTc0ODo6Y2dwdD1lZDA4ZDU2YS1jMDM4LTQzMjItYjMyNS01M2Y1MDRjMGM4OGN8d3M9b3JnLUFQNnlwY01pODRUaGZ1ZWxpNkVVM0I0bSIsImh0dHBzOi8vYXBpLm9wZW5haS5jb20vYXV0aCI6eyJjaGF0Z3B0X2FjY291bnRfaWQiOiJnb29nbGUtb2F1dGgyfDEwNTY3MTMwNzY2NTg0MTQxOTc0ODo6Y2dwdD1lZDA4ZDU2YS1jMDM4LTQzMjItYjMyNS01M2Y1MDRjMGM4OGN8d3M9b3JnLUFQNnlwY01pODRUaGZ1ZWxpNkVVM0I0bSJ9fQ.sig".to_string(),
+        access_token: String::new(),
+        refresh_token: String::new(),
+        api_key_access_token: None,
+        last_refresh: now_ts(),
+    };
+
+    let (chatgpt_account_id, workspace_id) = derive_account_meta(&token);
+
+    assert_eq!(
+        chatgpt_account_id.as_deref(),
+        Some("ed08d56a-c038-4322-b325-53f504c0c88c")
+    );
+    assert_eq!(
+        workspace_id.as_deref(),
+        Some("org-AP6ypcMi84Thfueli6EU3B4m")
+    );
 }

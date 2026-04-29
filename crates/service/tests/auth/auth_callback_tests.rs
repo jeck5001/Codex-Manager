@@ -3,11 +3,23 @@ use super::{
     html_response, oauth_callback_error_message, resolve_redirect_uri, LOGIN_SERVER_STATE,
 };
 use std::net::TcpListener;
-use std::sync::Mutex;
 use url::Url;
 
-static ENV_LOCK: Mutex<()> = Mutex::new(());
+#[path = "../support.rs"]
+mod support;
+use support::test_env_guard;
 
+/// 函数 `reset_login_server_state`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 fn reset_login_server_state() {
     if let Some(cell) = LOGIN_SERVER_STATE.get() {
         if let Ok(mut guard) = cell.lock() {
@@ -16,9 +28,20 @@ fn reset_login_server_state() {
     }
 }
 
+/// 函数 `resolve_redirect_uri_prefers_login_server`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn resolve_redirect_uri_prefers_login_server() {
-    let _guard = ENV_LOCK.lock().expect("lock");
+    let _guard = test_env_guard();
     reset_login_server_state();
     let prev_redirect = std::env::var("CODEXMANAGER_REDIRECT_URI").ok();
     let prev_login = std::env::var("CODEXMANAGER_LOGIN_ADDR").ok();
@@ -50,9 +73,20 @@ fn resolve_redirect_uri_prefers_login_server() {
     reset_login_server_state();
 }
 
+/// 函数 `login_server_reports_port_in_use`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn login_server_reports_port_in_use() {
-    let _guard = ENV_LOCK.lock().expect("lock");
+    let _guard = test_env_guard();
     reset_login_server_state();
     let prev_login = std::env::var("CODEXMANAGER_LOGIN_ADDR").ok();
 
@@ -74,9 +108,20 @@ fn login_server_reports_port_in_use() {
     reset_login_server_state();
 }
 
+/// 函数 `login_server_rejects_non_loopback_by_default`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn login_server_rejects_non_loopback_by_default() {
-    let _guard = ENV_LOCK.lock().expect("lock");
+    let _guard = test_env_guard();
     reset_login_server_state();
     let prev_allow = std::env::var("CODEXMANAGER_ALLOW_NON_LOOPBACK_LOGIN_ADDR").ok();
 
@@ -91,6 +136,17 @@ fn login_server_rejects_non_loopback_by_default() {
     reset_login_server_state();
 }
 
+/// 函数 `callback_success_page_contains_auto_close_script`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn callback_success_page_contains_auto_close_script() {
     let html = build_callback_success_page();
@@ -99,6 +155,17 @@ fn callback_success_page_contains_auto_close_script() {
     assert!(html.contains("Close Window"));
 }
 
+/// 函数 `callback_error_page_escapes_message`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn callback_error_page_escapes_message() {
     let html = build_callback_error_page("bad <script>alert(1)</script>");
@@ -106,6 +173,17 @@ fn callback_error_page_escapes_message() {
     assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
 }
 
+/// 函数 `callback_html_response_forces_connection_close`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn callback_html_response_forces_connection_close() {
     let response = html_response(build_callback_success_page());
@@ -124,6 +202,17 @@ fn callback_html_response_forces_connection_close() {
     );
 }
 
+/// 函数 `oauth_callback_error_message_maps_missing_entitlement`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn oauth_callback_error_message_maps_missing_entitlement() {
     let message = oauth_callback_error_message(
@@ -133,9 +222,20 @@ fn oauth_callback_error_message_maps_missing_entitlement() {
     assert!(message.contains("Codex is not enabled"));
 }
 
+/// 函数 `login_start_fails_when_login_server_cannot_bind`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn login_start_fails_when_login_server_cannot_bind() {
-    let _guard = ENV_LOCK.lock().expect("lock");
+    let _guard = test_env_guard();
     reset_login_server_state();
     let prev_login = std::env::var("CODEXMANAGER_LOGIN_ADDR").ok();
 

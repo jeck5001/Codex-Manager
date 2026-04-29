@@ -1,1 +1,1 @@
-pub(super) mod azure_openai;
+pub(super) mod aggregate_api;

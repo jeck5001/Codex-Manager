@@ -1,6 +1,18 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// 函数 `collect_json_files_recursively`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - root: 参数 root
+/// - output: 参数 output
+///
+/// # 返回
+/// 返回函数执行结果
 fn collect_json_files_recursively(root: &Path, output: &mut Vec<PathBuf>) -> Result<(), String> {
     let entries =
         fs::read_dir(root).map_err(|err| format!("read dir failed ({}): {err}", root.display()))?;
@@ -24,6 +36,17 @@ fn collect_json_files_recursively(root: &Path, output: &mut Vec<PathBuf>) -> Res
     Ok(())
 }
 
+/// 函数 `read_account_import_contents_from_directory`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_account_import_contents_from_directory(
     root: &Path,
 ) -> Result<(Vec<PathBuf>, Vec<String>), String> {
@@ -43,6 +66,17 @@ pub(crate) fn read_account_import_contents_from_directory(
     Ok((json_files, contents))
 }
 
+/// 函数 `read_account_import_contents_from_files`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_account_import_contents_from_files(
     files: &[PathBuf],
 ) -> Result<Vec<String>, String> {

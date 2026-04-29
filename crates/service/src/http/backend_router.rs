@@ -8,6 +8,17 @@ pub(crate) enum BackendRoute {
     Gateway,
 }
 
+/// 函数 `resolve_backend_route`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn resolve_backend_route(method: &str, path: &str) -> BackendRoute {
     if method == "POST" && path == "/rpc" {
         return BackendRoute::Rpc;
@@ -21,6 +32,17 @@ pub(crate) fn resolve_backend_route(method: &str, path: &str) -> BackendRoute {
     BackendRoute::Gateway
 }
 
+/// 函数 `handle_backend_request`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 无
 pub(crate) fn handle_backend_request(request: Request) {
     let route = resolve_backend_route(request.method().as_str(), request.url());
     match route {

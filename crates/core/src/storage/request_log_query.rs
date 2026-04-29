@@ -2,6 +2,8 @@
 pub(super) enum RequestLogQuery {
     All,
     GlobalLike(String),
+    AccountLike(String),
+    AccountExact(String),
     FieldLike {
         column: &'static str,
         pattern: String,
@@ -14,6 +16,17 @@ pub(super) enum RequestLogQuery {
     StatusRange(i64, i64),
 }
 
+/// 函数 `parse_request_log_query`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn parse_request_log_query(query: Option<&str>) -> RequestLogQuery {
     let Some(raw) = query.map(str::trim).filter(|v| !v.is_empty()) else {
         return RequestLogQuery::All;
@@ -27,6 +40,17 @@ pub(super) fn parse_request_log_query(query: Option<&str>) -> RequestLogQuery {
     RequestLogQuery::GlobalLike(format!("%{}%", raw))
 }
 
+/// 函数 `parse_prefixed_request_log_query`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_prefixed_request_log_query(raw: &str) -> Option<RequestLogQuery> {
     let (prefix, value) = raw.split_once(':')?;
     let normalized_prefix = prefix.trim().to_ascii_lowercase();
@@ -37,13 +61,20 @@ fn parse_prefixed_request_log_query(raw: &str) -> Option<RequestLogQuery> {
     let (is_exact, needle) = parse_match_mode(normalized_value)?;
 
     match normalized_prefix.as_str() {
-        "account" | "account_id" => Some(parse_field_query("account_id", is_exact, needle)),
+        "account" | "account_id" => Some(parse_account_query(is_exact, needle)),
         "path" | "request_path" => Some(parse_field_query("request_path", is_exact, needle)),
         "original" | "original_path" => Some(parse_field_query("original_path", is_exact, needle)),
         "adapted" | "adapted_path" => Some(parse_field_query("adapted_path", is_exact, needle)),
         "method" => Some(parse_field_query("method", is_exact, needle)),
+        "type" | "request_type" => Some(parse_field_query("request_type", is_exact, needle)),
         "model" => Some(parse_field_query("model", is_exact, needle)),
         "reasoning" | "reason" => Some(parse_field_query("reasoning_effort", is_exact, needle)),
+        "tier" | "service_tier" => Some(parse_field_query("service_tier", is_exact, needle)),
+        "effective_tier" | "effective_service_tier" => Some(parse_field_query(
+            "effective_service_tier",
+            is_exact,
+            needle,
+        )),
         "adapter" => Some(parse_field_query("response_adapter", is_exact, needle)),
         "error" => Some(parse_field_query("error", is_exact, needle)),
         "key" | "key_id" => Some(parse_field_query("key_id", is_exact, needle)),
@@ -54,6 +85,17 @@ fn parse_prefixed_request_log_query(raw: &str) -> Option<RequestLogQuery> {
     }
 }
 
+/// 函数 `parse_match_mode`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_match_mode(raw: &str) -> Option<(bool, &str)> {
     let value = raw.trim();
     if value.is_empty() {
@@ -69,6 +111,19 @@ fn parse_match_mode(raw: &str) -> Option<(bool, &str)> {
     Some((false, value))
 }
 
+/// 函数 `parse_field_query`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - column: 参数 column
+/// - is_exact: 参数 is_exact
+/// - value: 参数 value
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_field_query(column: &'static str, is_exact: bool, value: &str) -> RequestLogQuery {
     if is_exact {
         return RequestLogQuery::FieldExact {
@@ -82,6 +137,24 @@ fn parse_field_query(column: &'static str, is_exact: bool, value: &str) -> Reque
     }
 }
 
+fn parse_account_query(is_exact: bool, value: &str) -> RequestLogQuery {
+    if is_exact {
+        return RequestLogQuery::AccountExact(value.to_string());
+    }
+    RequestLogQuery::AccountLike(format!("%{}%", value))
+}
+
+/// 函数 `parse_status_query`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - raw: 参数 raw
+///
+/// # 返回
+/// 返回函数执行结果
 fn parse_status_query(raw: &str) -> Option<RequestLogQuery> {
     let normalized = raw.trim().to_ascii_lowercase();
     if normalized.len() == 3 && normalized.ends_with("xx") {

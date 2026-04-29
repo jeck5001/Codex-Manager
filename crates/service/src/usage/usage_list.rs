@@ -3,6 +3,17 @@ use codexmanager_core::rpc::types::UsageSnapshotResult;
 use crate::storage_helpers::open_storage;
 use crate::usage_read::usage_snapshot_result_from_record;
 
+/// 函数 `read_usage_snapshots`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_usage_snapshots() -> Result<Vec<UsageSnapshotResult>, String> {
     // 读取所有账号最新用量
     let storage = open_storage().ok_or_else(|| "open storage failed".to_string())?;

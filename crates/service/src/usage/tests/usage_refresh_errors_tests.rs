@@ -78,6 +78,17 @@ fn insert_account(storage: &Storage, account_id: &str, status: &str) {
         .expect("insert account");
 }
 
+/// 函数 `usage_refresh_error_class_groups_by_status_code`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_refresh_error_class_groups_by_status_code() {
     assert_eq!(
@@ -88,8 +99,29 @@ fn usage_refresh_error_class_groups_by_status_code() {
         classify_usage_refresh_error("usage endpoint status 503 Service Unavailable"),
         "usage_status_503"
     );
+    assert_eq!(
+        classify_usage_refresh_error("subscription endpoint status 401 Unauthorized"),
+        "usage_status_401"
+    );
+    assert_eq!(
+        classify_usage_refresh_error(
+            "subscription endpoint failed: status=503 Service Unavailable body=upstream unavailable"
+        ),
+        "usage_status_503"
+    );
 }
 
+/// 函数 `usage_refresh_error_class_catches_timeout_and_connection`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_refresh_error_class_catches_timeout_and_connection() {
     assert_eq!(
@@ -103,6 +135,17 @@ fn usage_refresh_error_class_catches_timeout_and_connection() {
     assert_eq!(classify_usage_refresh_error("unknown error"), "other");
 }
 
+/// 函数 `failure_event_throttle_dedupes_within_window`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_refresh_error_class_catches_deactivated_account() {
     let message = "HTTP 401: Your OpenAI account has been deactivated, please check your email for more information. If you feel this is an error, contact us through our help center at help.openai.com";
@@ -145,6 +188,17 @@ fn failure_event_throttle_dedupes_within_window() {
     ));
 }
 
+/// 函数 `failure_event_throttle_isolated_by_error_class`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn failure_event_throttle_isolated_by_error_class() {
     let mut state = HashMap::new();

@@ -4,6 +4,17 @@ use codexmanager_core::storage::UsageSnapshotRecord;
 use crate::account_availability::usage_window_is_unavailable;
 use crate::storage_helpers::open_storage;
 
+/// 函数 `usage_snapshot_result_from_record`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn usage_snapshot_result_from_record(snap: UsageSnapshotRecord) -> UsageSnapshotResult {
     let availability_status = classify_availability_status(&snap).to_string();
     // 将存储记录转换为 API 返回结构
@@ -21,6 +32,17 @@ pub(crate) fn usage_snapshot_result_from_record(snap: UsageSnapshotRecord) -> Us
     }
 }
 
+/// 函数 `classify_availability_status`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - snap: 参数 snap
+///
+/// # 返回
+/// 返回函数执行结果
 fn classify_availability_status(snap: &UsageSnapshotRecord) -> &'static str {
     let primary_missing = snap.used_percent.is_none() || snap.window_minutes.is_none();
     if primary_missing {
@@ -43,7 +65,9 @@ fn classify_availability_status(snap: &UsageSnapshotRecord) -> &'static str {
         return "primary_window_available_only";
     }
     if !secondary_complete {
-        return "unknown";
+        // 中文注释：secondary 只要不是完整可用数据，就按主窗口可用处理，
+        // 避免半截快照把还有额度的账号展示成未知状态。
+        return "primary_window_available_only";
     }
     if snap
         .secondary_used_percent
@@ -55,6 +79,17 @@ fn classify_availability_status(snap: &UsageSnapshotRecord) -> &'static str {
     "available"
 }
 
+/// 函数 `read_usage_snapshot`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - crate: 参数 crate
+///
+/// # 返回
+/// 返回函数执行结果
 pub(crate) fn read_usage_snapshot(account_id: Option<&str>) -> Option<UsageSnapshotResult> {
     // 读取最新用量快照
     let storage = open_storage()?;

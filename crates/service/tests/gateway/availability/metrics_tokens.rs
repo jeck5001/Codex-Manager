@@ -2,6 +2,18 @@ use super::*;
 use std::thread;
 use std::time::Duration;
 
+/// 函数 `metric_value`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - text: 参数 text
+/// - name: 参数 name
+///
+/// # 返回
+/// 返回函数执行结果
 fn metric_value(text: &str, name: &str) -> u64 {
     text.lines()
         .find_map(|line| {
@@ -15,6 +27,17 @@ fn metric_value(text: &str, name: &str) -> u64 {
         .unwrap_or(0)
 }
 
+/// 函数 `token_exchange_lock_reuses_same_account_lock`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn token_exchange_lock_reuses_same_account_lock() {
     let first = account_token_exchange_lock("acc-1");
@@ -24,6 +47,17 @@ fn token_exchange_lock_reuses_same_account_lock() {
     assert!(!Arc::ptr_eq(&first, &third));
 }
 
+/// 函数 `metrics_prometheus_contains_expected_series`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn metrics_prometheus_contains_expected_series() {
     let text = gateway_metrics_prometheus();
@@ -31,6 +65,13 @@ fn metrics_prometheus_contains_expected_series() {
     assert!(text.contains("codexmanager_gateway_requests_active "));
     assert!(text.contains("codexmanager_gateway_account_inflight_total "));
     assert!(text.contains("codexmanager_gateway_failover_attempts_total "));
+    assert!(text.contains("codexmanager_gateway_candidate_skips_total "));
+    assert!(
+        text.contains("codexmanager_gateway_candidate_skips_by_reason_total{reason=\"cooldown\"} ")
+    );
+    assert!(
+        text.contains("codexmanager_gateway_candidate_skips_by_reason_total{reason=\"inflight\"} ")
+    );
     assert!(text.contains("codexmanager_gateway_cooldown_marks_total "));
     assert!(text.contains("codexmanager_rpc_requests_total "));
     assert!(text.contains("codexmanager_rpc_requests_failed_total "));
@@ -43,6 +84,17 @@ fn metrics_prometheus_contains_expected_series() {
     assert!(text.contains("codexmanager_usage_refresh_duration_milliseconds_count "));
 }
 
+/// 函数 `rpc_metrics_track_failures_and_duration`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn rpc_metrics_track_failures_and_duration() {
     let before = gateway_metrics_prometheus();
@@ -75,6 +127,17 @@ fn rpc_metrics_track_failures_and_duration() {
     assert!(after_duration > before_duration);
 }
 
+/// 函数 `usage_refresh_metrics_track_success_and_failure`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn usage_refresh_metrics_track_success_and_failure() {
     let before = gateway_metrics_prometheus();
@@ -102,4 +165,47 @@ fn usage_refresh_metrics_track_success_and_failure() {
     assert!(after_success > before_success);
     assert!(after_failures > before_failures);
     assert!(after_duration >= before_duration + 10);
+}
+
+/// 函数 `candidate_skip_metrics_track_reason_breakdown`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-13
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
+#[test]
+fn candidate_skip_metrics_track_reason_breakdown() {
+    let before = gateway_metrics_prometheus();
+    let before_skips = metric_value(&before, "codexmanager_gateway_candidate_skips_total");
+    let before_cooldown = metric_value(
+        &before,
+        "codexmanager_gateway_candidate_skips_by_reason_total{reason=\"cooldown\"}",
+    );
+    let before_inflight = metric_value(
+        &before,
+        "codexmanager_gateway_candidate_skips_by_reason_total{reason=\"inflight\"}",
+    );
+
+    super::super::record_gateway_candidate_skip(super::super::GatewayCandidateSkipReason::Cooldown);
+    super::super::record_gateway_candidate_skip(super::super::GatewayCandidateSkipReason::Inflight);
+
+    let after = gateway_metrics_prometheus();
+    let after_skips = metric_value(&after, "codexmanager_gateway_candidate_skips_total");
+    let after_cooldown = metric_value(
+        &after,
+        "codexmanager_gateway_candidate_skips_by_reason_total{reason=\"cooldown\"}",
+    );
+    let after_inflight = metric_value(
+        &after,
+        "codexmanager_gateway_candidate_skips_by_reason_total{reason=\"inflight\"}",
+    );
+
+    assert!(after_skips >= before_skips + 2);
+    assert!(after_cooldown >= before_cooldown + 1);
+    assert!(after_inflight >= before_inflight + 1);
 }

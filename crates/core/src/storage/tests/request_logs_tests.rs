@@ -1,5 +1,17 @@
 use super::{RequestLog, RequestTokenStat, Storage};
 
+/// 函数 `collect_query_plan_details`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - storage: 参数 storage
+/// - sql: 参数 sql
+///
+/// # 返回
+/// 返回函数执行结果
 fn collect_query_plan_details(storage: &Storage, sql: &str) -> Vec<String> {
     let mut stmt = storage.conn.prepare(sql).expect("prepare explain");
     let mut rows = stmt.query([]).expect("query explain");
@@ -11,6 +23,17 @@ fn collect_query_plan_details(storage: &Storage, sql: &str) -> Vec<String> {
     details
 }
 
+/// 函数 `method_exact_query_matches_composite_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn method_exact_query_matches_composite_index() {
     let storage = Storage::open_in_memory().expect("open");
@@ -29,6 +52,17 @@ fn method_exact_query_matches_composite_index() {
         .any(|detail| detail.contains("idx_request_logs_method_created_at")));
 }
 
+/// 函数 `key_exact_query_matches_composite_index`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn key_exact_query_matches_composite_index() {
     let storage = Storage::open_in_memory().expect("open");
@@ -47,6 +81,17 @@ fn key_exact_query_matches_composite_index() {
         .any(|detail| detail.contains("idx_request_logs_key_id_created_at")));
 }
 
+/// 函数 `insert_request_log_with_token_stat_is_visible_via_join`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn insert_request_log_with_token_stat_is_visible_via_join() {
     let storage = Storage::open_in_memory().expect("open");
@@ -71,12 +116,18 @@ fn insert_request_log_with_token_stat_is_visible_via_join() {
         original_path: Some("/v1/chat/completions".to_string()),
         adapted_path: Some("/v1/responses".to_string()),
         method: "POST".to_string(),
+        request_type: Some("http".to_string()),
         model: Some("gpt-5".to_string()),
         reasoning_effort: Some("medium".to_string()),
+        service_tier: Some("fast".to_string()),
+        effective_service_tier: Some("priority".to_string()),
         response_adapter: Some("OpenAIChatCompletionsJson".to_string()),
         upstream_url: Some("https://example.test".to_string()),
+        aggregate_api_supplier_name: None,
+        aggregate_api_url: None,
         status_code: Some(200),
         duration_ms: Some(1234),
+        first_response_ms: Some(456),
         input_tokens: None,
         cached_input_tokens: None,
         output_tokens: None,
@@ -85,6 +136,7 @@ fn insert_request_log_with_token_stat_is_visible_via_join() {
         estimated_cost_usd: None,
         error: None,
         created_at,
+        ..Default::default()
     };
 
     let stat = RequestTokenStat {
@@ -126,6 +178,10 @@ fn insert_request_log_with_token_stat_is_visible_via_join() {
     assert_eq!(row.request_path, log.request_path);
     assert_eq!(row.original_path.as_deref(), Some("/v1/chat/completions"));
     assert_eq!(row.adapted_path.as_deref(), Some("/v1/responses"));
+    assert_eq!(row.request_type.as_deref(), Some("http"));
+    assert_eq!(row.service_tier.as_deref(), Some("fast"));
+    assert_eq!(row.effective_service_tier.as_deref(), Some("priority"));
+    assert_eq!(row.first_response_ms, Some(456));
     assert_eq!(
         row.response_adapter.as_deref(),
         Some("OpenAIChatCompletionsJson")
@@ -138,6 +194,17 @@ fn insert_request_log_with_token_stat_is_visible_via_join() {
     assert_eq!(row.estimated_cost_usd, Some(0.123));
 }
 
+/// 函数 `token_stat_failure_still_commits_request_log`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn token_stat_failure_still_commits_request_log() {
     let storage = Storage::open_in_memory().expect("open");
@@ -169,8 +236,11 @@ fn token_stat_failure_still_commits_request_log() {
         reasoning_effort: None,
         response_adapter: Some("Passthrough".to_string()),
         upstream_url: None,
+        aggregate_api_supplier_name: None,
+        aggregate_api_url: None,
         status_code: Some(200),
         duration_ms: None,
+        first_response_ms: None,
         input_tokens: None,
         cached_input_tokens: None,
         output_tokens: None,
@@ -179,6 +249,7 @@ fn token_stat_failure_still_commits_request_log() {
         estimated_cost_usd: None,
         error: None,
         created_at,
+        ..Default::default()
     };
 
     let stat = RequestTokenStat {
@@ -207,6 +278,17 @@ fn token_stat_failure_still_commits_request_log() {
     assert_eq!(count, 1);
 }
 
+/// 函数 `request_logs_support_backend_pagination_and_status_filters`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn request_logs_support_backend_pagination_and_status_filters() {
     let storage = Storage::open_in_memory().expect("open");
@@ -247,8 +329,11 @@ fn request_logs_support_backend_pagination_and_status_filters() {
                 reasoning_effort: Some("high".to_string()),
                 response_adapter: Some("Passthrough".to_string()),
                 upstream_url: Some("https://chatgpt.com/backend-api/codex/responses".to_string()),
+                aggregate_api_supplier_name: None,
+                aggregate_api_url: None,
                 status_code,
                 duration_ms: Some(200 + index),
+                first_response_ms: None,
                 input_tokens: None,
                 cached_input_tokens: None,
                 output_tokens: None,
@@ -257,6 +342,7 @@ fn request_logs_support_backend_pagination_and_status_filters() {
                 estimated_cost_usd: None,
                 error,
                 created_at,
+                ..Default::default()
             })
             .expect("insert request log");
         storage
@@ -277,17 +363,28 @@ fn request_logs_support_backend_pagination_and_status_filters() {
     }
 
     let page = storage
-        .list_request_logs_paginated(None, Some("5xx"), 0, 1)
+        .list_request_logs_paginated(None, Some("5xx"), None, None, 0, 1)
         .expect("list paginated logs");
     assert_eq!(page.len(), 1);
     assert_eq!(page[0].trace_id.as_deref(), Some("trc-4"));
 
     let total_5xx = storage
-        .count_request_logs(None, Some("5xx"))
+        .count_request_logs(None, Some("5xx"), None, None)
         .expect("count 5xx logs");
     assert_eq!(total_5xx, 2);
 }
 
+/// 函数 `request_logs_filtered_summary_aggregates_counts_and_tokens`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[test]
 fn request_logs_filtered_summary_aggregates_counts_and_tokens() {
     let storage = Storage::open_in_memory().expect("open");
@@ -322,8 +419,11 @@ fn request_logs_filtered_summary_aggregates_counts_and_tokens() {
                 reasoning_effort: Some("medium".to_string()),
                 response_adapter: Some("Passthrough".to_string()),
                 upstream_url: Some("https://chatgpt.com/backend-api/codex/responses".to_string()),
+                aggregate_api_supplier_name: None,
+                aggregate_api_url: None,
                 status_code,
                 duration_ms: Some(900),
+                first_response_ms: None,
                 input_tokens: None,
                 cached_input_tokens: None,
                 output_tokens: None,
@@ -332,6 +432,7 @@ fn request_logs_filtered_summary_aggregates_counts_and_tokens() {
                 estimated_cost_usd: None,
                 error: error.map(|value| value.to_string()),
                 created_at,
+                ..Default::default()
             })
             .expect("insert request log");
         storage
@@ -352,10 +453,61 @@ fn request_logs_filtered_summary_aggregates_counts_and_tokens() {
     }
 
     let summary = storage
-        .summarize_request_logs_filtered(None, Some("all"))
+        .summarize_request_logs_filtered(None, Some("all"), None, None)
         .expect("summarize filtered logs");
     assert_eq!(summary.count, 3);
     assert_eq!(summary.success_count, 2);
     assert_eq!(summary.error_count, 1);
     assert_eq!(summary.total_tokens, 150);
+    assert_eq!(summary.estimated_cost_usd, 0.03);
+}
+
+#[test]
+fn request_logs_support_time_range_filters() {
+    let storage = Storage::open_in_memory().expect("open");
+    storage.init().expect("init");
+
+    for (index, created_at) in [1_000_i64, 1_900_i64, 3_100_i64].into_iter().enumerate() {
+        let request_log_id = storage
+            .insert_request_log(&RequestLog {
+                trace_id: Some(format!("trc-time-{index}")),
+                key_id: Some("gk-time".to_string()),
+                account_id: Some("acc-time".to_string()),
+                request_path: "/v1/responses".to_string(),
+                method: "POST".to_string(),
+                status_code: Some(200),
+                created_at,
+                ..Default::default()
+            })
+            .expect("insert request log");
+        storage
+            .insert_request_token_stat(&RequestTokenStat {
+                request_log_id,
+                key_id: Some("gk-time".to_string()),
+                account_id: Some("acc-time".to_string()),
+                model: Some("gpt-5".to_string()),
+                total_tokens: Some(10),
+                estimated_cost_usd: Some(0.01),
+                created_at,
+                ..Default::default()
+            })
+            .expect("insert token stat");
+    }
+
+    let page = storage
+        .list_request_logs_paginated(None, None, Some(1_500), Some(3_000), 0, 10)
+        .expect("list paginated logs");
+    assert_eq!(page.len(), 1);
+    assert_eq!(page[0].trace_id.as_deref(), Some("trc-time-1"));
+
+    let total = storage
+        .count_request_logs(None, None, Some(1_500), Some(3_000))
+        .expect("count logs");
+    assert_eq!(total, 1);
+
+    let summary = storage
+        .summarize_request_logs_filtered(None, None, Some(900), Some(2_000))
+        .expect("summarize time range");
+    assert_eq!(summary.count, 2);
+    assert_eq!(summary.total_tokens, 20);
 }

@@ -3,6 +3,17 @@ use rusqlite::params;
 use super::Storage;
 
 impl Storage {
+    /// 函数 `list_app_settings`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn list_app_settings(&self) -> rusqlite::Result<Vec<(String, String)>> {
         let mut stmt = self.conn.prepare(
             "SELECT key, value
@@ -17,6 +28,18 @@ impl Storage {
         Ok(items)
     }
 
+    /// 函数 `get_app_setting`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key: 参数 key
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn get_app_setting(&self, key: &str) -> rusqlite::Result<Option<String>> {
         let mut stmt = self.conn.prepare(
             "SELECT value
@@ -31,6 +54,20 @@ impl Storage {
         Ok(None)
     }
 
+    /// 函数 `set_app_setting`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key: 参数 key
+    /// - value: 参数 value
+    /// - updated_at: 参数 updated_at
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn set_app_setting(&self, key: &str, value: &str, updated_at: i64) -> rusqlite::Result<()> {
         self.conn.execute(
             "INSERT INTO app_settings (key, value, updated_at)
@@ -43,6 +80,18 @@ impl Storage {
         Ok(())
     }
 
+    /// 函数 `delete_app_setting`
+    ///
+    /// 作者: gaohongshun
+    ///
+    /// 时间: 2026-04-02
+    ///
+    /// # 参数
+    /// - self: 参数 self
+    /// - key: 参数 key
+    ///
+    /// # 返回
+    /// 返回函数执行结果
     pub fn delete_app_setting(&self, key: &str) -> rusqlite::Result<()> {
         self.conn
             .execute("DELETE FROM app_settings WHERE key = ?1", [key])?;

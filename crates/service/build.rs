@@ -1,3 +1,14 @@
+/// 函数 `main`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[cfg(windows)]
 fn main() {
     // 关键：本 crate 既作为独立二进制发布（service 版），也会被桌面端（Tauri）作为依赖引用。
@@ -22,5 +33,16 @@ fn main() {
         .expect("failed to compile Windows resources (icon)");
 }
 
+/// 函数 `main`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 无
 #[cfg(not(windows))]
 fn main() {}

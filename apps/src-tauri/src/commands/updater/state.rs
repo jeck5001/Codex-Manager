@@ -16,10 +16,32 @@ struct UpdaterState {
 
 static UPDATER_STATE: OnceLock<Mutex<UpdaterState>> = OnceLock::new();
 
+/// 函数 `updater_state`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// 无
+///
+/// # 返回
+/// 返回函数执行结果
 fn updater_state() -> &'static Mutex<UpdaterState> {
     UPDATER_STATE.get_or_init(|| Mutex::new(UpdaterState::default()))
 }
 
+/// 函数 `set_last_check`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn set_last_check(check: UpdateCheckResponse) {
     if let Ok(mut guard) = updater_state().lock() {
         guard.last_check = Some(check);
@@ -27,18 +49,51 @@ pub(super) fn set_last_check(check: UpdateCheckResponse) {
     }
 }
 
+/// 函数 `set_last_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn set_last_error(message: String) {
     if let Ok(mut guard) = updater_state().lock() {
         guard.last_error = Some(message);
     }
 }
 
+/// 函数 `clear_last_error`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 无
 pub(super) fn clear_last_error() {
     if let Ok(mut guard) = updater_state().lock() {
         guard.last_error = None;
     }
 }
 
+/// 函数 `snapshot_last_state`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn snapshot_last_state() -> (Option<UpdateCheckResponse>, Option<String>) {
     if let Ok(guard) = updater_state().lock() {
         (guard.last_check.clone(), guard.last_error.clone())
@@ -47,6 +102,17 @@ pub(super) fn snapshot_last_state() -> (Option<UpdateCheckResponse>, Option<Stri
     }
 }
 
+/// 函数 `updates_root_dir`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn updates_root_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let mut root = app
         .path()
@@ -57,10 +123,32 @@ pub(super) fn updates_root_dir(app: &tauri::AppHandle) -> Result<PathBuf, String
     Ok(root)
 }
 
+/// 函数 `pending_update_path`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn pending_update_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(updates_root_dir(app)?.join(PENDING_UPDATE_FILE))
 }
 
+/// 函数 `read_pending_update`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn read_pending_update(app: &tauri::AppHandle) -> Result<Option<PendingUpdate>, String> {
     let path = pending_update_path(app)?;
     if !path.is_file() {
@@ -72,6 +160,17 @@ pub(super) fn read_pending_update(app: &tauri::AppHandle) -> Result<Option<Pendi
     Ok(Some(parsed))
 }
 
+/// 函数 `write_pending_update`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn write_pending_update(
     app: &tauri::AppHandle,
     pending: &PendingUpdate,
@@ -85,6 +184,17 @@ pub(super) fn write_pending_update(
     fs::write(&path, bytes).map_err(|err| format!("写入待安装更新信息失败：{err}"))
 }
 
+/// 函数 `clear_pending_update`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn clear_pending_update(app: &tauri::AppHandle) -> Result<(), String> {
     let path = pending_update_path(app)?;
     if path.exists() {
@@ -93,6 +203,17 @@ pub(super) fn clear_pending_update(app: &tauri::AppHandle) -> Result<(), String>
     Ok(())
 }
 
+/// 函数 `script_dir_from_pending`
+///
+/// 作者: gaohongshun
+///
+/// 时间: 2026-04-02
+///
+/// # 参数
+/// - super: 参数 super
+///
+/// # 返回
+/// 返回函数执行结果
 pub(super) fn script_dir_from_pending(
     pending: &PendingUpdate,
     app: &tauri::AppHandle,
